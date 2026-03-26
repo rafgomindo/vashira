@@ -6,7 +6,6 @@ import {
   Search, 
   Plus, 
   Globe, 
-  BookOpen, 
   Clock, 
   ChevronRight,
   FileText,
@@ -16,13 +15,18 @@ import {
   Download,
   Database,
   Quote,
+  Users,
+  Rss,
+  Eye,
+  ExternalLink,
+  X,
+  FileCode,
+  BookOpen,
   Copy,
   Zap,
   Activity,
   ShieldCheck,
-  Cpu,
-  Users,
-  Rss
+  Cpu
 } from 'lucide-react';
 
 interface ResearchItem {
@@ -72,6 +76,9 @@ declare global {
       getDiscoveries: () => Promise<PeerDiscovery[]>;
       announceMetadata: (doi: string, title: string) => Promise<void>;
       openFile: (filePath: string) => Promise<boolean>;
+      importBibTeX: () => Promise<any[]>;
+      importRIS: () => Promise<any[]>;
+      readFile: (filePath: string) => Promise<Uint8Array>;
     }
   }
 }
@@ -96,6 +103,11 @@ const App: React.FC = () => {
   const [masterName, setMasterName] = useState('Master Rafael');
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [stats, setStats] = useState({ items: 0, collections: 0 });
+  const [citationStyle, setCitationStyle] = useState<'apa' | 'ieee' | 'mla'>('apa');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'alert' } | null>(null);
+  const [isReaderOpen, setIsReaderOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
 
   const loadItems = async () => {
     try {
@@ -140,8 +152,8 @@ const App: React.FC = () => {
     setNotes(data);
   };
 
-  const loadCitation = async (itemId: number) => {
-    const text = await window.vashiraAPI.generateCitation(itemId);
+  const loadCitation = async (itemId: number, style: any = citationStyle) => {
+    const text = await window.vashiraAPI.generateCitation(itemId); // The current IPC only does APA, but for 3.0 we'll wrap it or pass style
     setCitation(text);
   };
 
@@ -188,6 +200,11 @@ const App: React.FC = () => {
     }
   };
 
+  const showToast = (message: string, type: 'success' | 'alert' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleImportPDF = async () => {
     setLoading(true);
     try {
@@ -195,14 +212,57 @@ const App: React.FC = () => {
       if (metadata) {
         await window.vashiraAPI.addItem(metadata);
         await window.vashiraAPI.announceMetadata(metadata.doi || 'N/A', metadata.title);
+        showToast("PDF Mastery Vault updated!");
         loadItems();
         loadSyncData();
       }
     } catch (e) {
       console.error(e);
+      showToast("Mastery interrupted.", "alert");
     } finally {
       setLoading(false);
+      setIsImportMenuOpen(false);
     }
+  };
+
+  const handleImportFormat = async (type: 'bib' | 'ris') => {
+    setLoading(true);
+    try {
+      const items = type === 'bib' ? await window.vashiraAPI.importBibTeX() : await window.vashiraAPI.importRIS();
+      if (items && items.length > 0) {
+        for (const item of items) {
+           await window.vashiraAPI.addItem(item);
+        }
+        showToast(`${items.length} items synthesized into Library.`);
+        loadItems();
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Formation error.", "alert");
+    } finally {
+      setLoading(false);
+      setIsImportMenuOpen(false);
+    }
+  };
+
+const handleOpenReader = async (item: ResearchItem) => {
+    if (!item.filePath) return;
+    try {
+      const buffer = await window.vashiraAPI.readFile(item.filePath);
+      const blob = new Blob([buffer as any], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+      setIsReaderOpen(true);
+    } catch (e) {
+      console.error(e);
+      showToast("Cannot read from vault.", "alert");
+    }
+  };
+
+  const closeReader = () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    setPdfUrl(null);
+    setIsReaderOpen(false);
   };
 
   const handleAddNote = async () => {
@@ -309,16 +369,31 @@ const App: React.FC = () => {
           </h1>
           <div style={{ display: 'flex', gap: '12px' }}>
             {activeTab === 'library' && (
-              <>
-                <button onClick={handleImportPDF} className="secondary-button">
-                  <FileText size={18} />
-                  Import PDF
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setIsImportMenuOpen(!isImportMenuOpen)} className="secondary-button">
+                  <Download size={18} />
+                  Import Mastery
                 </button>
-                <button onClick={() => setShowDoiModal(true)} className="primary-button">
-                  <Plus size={18} />
-                  Add via DOI
-                </button>
-              </>
+                {isImportMenuOpen && (
+                  <div style={{ position: 'absolute', top: '100%', right: 0, background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', zIndex: 100, width: '180px', marginTop: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
+                    <div className="menu-item" onClick={handleImportPDF} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <FileText size={16} /> PDF File
+                    </div>
+                    <div className="menu-item" onClick={() => handleImportFormat('bib')} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border-color)', cursor: 'pointer' }}>
+                      <FileCode size={16} /> BibTeX (.bib)
+                    </div>
+                    <div className="menu-item" onClick={() => handleImportFormat('ris')} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border-color)', cursor: 'pointer' }}>
+                      <BookOpen size={16} /> RIS (.ris)
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {activeTab === 'library' && (
+              <button onClick={() => setShowDoiModal(true)} className="primary-button">
+                <Plus size={18} />
+                Add via DOI
+              </button>
             )}
             {activeTab === 'shared' && (
               <button className="primary-button" style={{ background: '#10b981' }}>
@@ -424,7 +499,22 @@ const App: React.FC = () => {
                     </div>
                   ) : (
                     <div className="hub-section">
-                      <h4 className="section-title">BIBLIOGRAPHY (APA)</h4>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <h4 className="section-title" style={{ margin: 0 }}>BIBLIOGRAPHY</h4>
+                        <select 
+                          value={citationStyle}
+                          onChange={(e) => {
+                             const style = e.target.value as any;
+                             setCitationStyle(style);
+                             loadCitation(selectedItem!.id, style);
+                          }}
+                          style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '2px 4px' }}
+                        >
+                          <option value="apa">APA 7th</option>
+                          <option value="ieee">IEEE</option>
+                          <option value="mla">MLA 9th</option>
+                        </select>
+                      </div>
                       <div className="note-card" style={{ background: 'rgba(167, 139, 250, 0.05)', borderLeft: '3px solid #a78bfa' }}>
                          <div dangerouslySetInnerHTML={{ __html: citation }} style={{ fontSize: '0.9rem', lineHeight: '1.6' }} />
                          <button 
@@ -634,6 +724,28 @@ const App: React.FC = () => {
               <button onClick={handleAddItem} className="primary-button">Import</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {isReaderOpen && pdfUrl && (
+        <div className="pdf-reader-overlay fade-in">
+          <div className="pdf-reader-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <BookOpen size={20} color="var(--accent-color)" />
+              <span style={{ fontWeight: 600 }}>{selectedItem?.title}</span>
+            </div>
+            <button className="icon-button" onClick={closeReader}><X size={24} /></button>
+          </div>
+          <div className="pdf-reader-body">
+            <iframe src={pdfUrl} width="100%" height="100%" />
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`toast floating ${toast.type}`}>
+          {toast.type === 'success' ? <ShieldCheck size={18} /> : <Zap size={18} />}
+          <span>{toast.message}</span>
         </div>
       )}
     </div>

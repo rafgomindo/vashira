@@ -18,4 +18,7 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   getDiscoveries: () => ipcRenderer.invoke('get-discoveries'),
   announceMetadata: (doi: string, title: string) => ipcRenderer.invoke('announce-metadata', doi, title),
   openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
+  importBibTeX: () => ipcRenderer.invoke('import-bibtex'),
+  importRIS: () => ipcRenderer.invoke('import-ris'),
+  readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
 });

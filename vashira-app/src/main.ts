@@ -2,8 +2,9 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
-import { initDatabase, getItems, addItem, getNotes, addNote } from './database';
+import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath } from './database';
 import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText } from './gatherer';
+import { parseBibTeX, parseRIS, extractMetadataFromHeuristics } from './parser';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -80,37 +81,73 @@ app.on('ready', () => {
 
     if (canceled || filePaths.length === 0) return null;
 
-    const filePath = filePaths[0];
+    const sourcePath = filePaths[0];
+    const fileName = path.basename(sourcePath);
+    const destPath = path.join(getStoragePath(), fileName);
+
     try {
-      // Read the first 10KB to sample for a DOI
-      const buffer = Buffer.alloc(10000);
-      const fd = fs.openSync(filePath, 'r');
-      fs.readSync(fd, buffer, 0, 10000, 0);
+      // Copy to vault
+      fs.copyFileSync(sourcePath, destPath);
+
+      // Read for metadata
+      const buffer = Buffer.alloc(20000); // 20KB for better chance
+      const fd = fs.openSync(destPath, 'r');
+      fs.readSync(fd, buffer, 0, 20000, 0);
       fs.closeSync(fd);
 
       const text = buffer.toString('utf8');
       const doi = extractDOIFromText(text);
 
+      let metadata: any = null;
       if (doi) {
-        const metadata = await fetchMetadataFromDOI(doi);
-        if (metadata) {
-          return { ...metadata, filePath };
-        }
+        metadata = await fetchMetadataFromDOI(doi);
       }
       
-      // Fallback: title from filename
-      return {
-        title: path.basename(filePath),
-        itemType: 'attachment',
-        doi: '',
-        authors: 'Local File',
-        published: 'N/A',
-        filePath
-      };
+      if (!metadata) {
+        // Use heuristics
+        const h = extractMetadataFromHeuristics(text);
+        metadata = {
+            title: h.title || fileName,
+            itemType: 'journalArticle',
+            authors: 'Extracted Content',
+            published: 'N/A',
+            doi: doi || '',
+            abstract: h.abstract || ''
+        };
+      }
+
+      return { ...metadata, filePath: destPath };
     } catch (error) {
       console.error('PDF Import error:', error);
       return null;
     }
+  });
+
+  ipcMain.handle('import-bibtex', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'BibTeX', extensions: ['bib'] }]
+    });
+    if (canceled || filePaths.length === 0) return null;
+    const content = fs.readFileSync(filePaths[0], 'utf8');
+    return parseBibTeX(content);
+  });
+
+  ipcMain.handle('import-ris', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'RIS', extensions: ['ris'] }]
+    });
+    if (canceled || filePaths.length === 0) return null;
+    const content = fs.readFileSync(filePaths[0], 'utf8');
+    return parseRIS(content);
+  });
+
+  ipcMain.handle('read-file', async (_, filePath) => {
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath);
+    }
+    return null;
   });
 
   ipcMain.handle('open-file', async (_, filePath) => {

@@ -42,6 +42,35 @@ const MINIMAL_APA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
   </bibliography>
 </style>`;
 
+const MINIMAL_IEEE_STYLE = `<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" demote-non-dropping-particle="never">
+  <info><title>Vashira IEEE</title><id>v-ieee</id><updated>2026-03-26T00:00:00+00:00</updated></info>
+  <layout prefix="[" suffix="]" delimiter=", ">
+    <text variable="citation-number"/>
+  </layout>
+  <bibliography>
+    <layout>
+      <text variable="citation-number" prefix="[" suffix="] "/>
+      <names variable="author" suffix=", "><name and="text" delimiter=", " initialize-with=". "/></names>
+      <text variable="title" prefix='"' suffix=',"' font-style="italic"/>
+      <text variable="container-title" prefix=" " suffix="."/>
+    </layout>
+  </bibliography>
+</style>`;
+
+const MINIMAL_MLA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
+  <info><title>Vashira MLA</title><id>v-mla</id><updated>2026-03-26T00:00:00+00:00</updated></info>
+  <bibliography>
+    <layout>
+      <names variable="author" suffix=". "><name name-as-sort-order="all" and="text" delimiter=", " initialize-with=". "/></names>
+      <text variable="title" prefix='"' suffix='."'/>
+      <text variable="container-title" font-style="italic" prefix=" " suffix="."/>
+      <date variable="issued" prefix=" " suffix="."><date-part name="year"/></date>
+    </layout>
+  </bibliography>
+</style>`;
+
 const MINIMAL_LOCALE = `<?xml version="1.0" encoding="utf-8"?>
 <locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
   <terms>
@@ -54,7 +83,7 @@ export class CitationEngine {
   private citeproc: any;
   private sys: any;
 
-  constructor(items: any[]) {
+  constructor(items: any[], style: 'apa' | 'ieee' | 'mla' = 'apa') {
     this.sys = {
       retrieveLocale: () => MINIMAL_LOCALE,
       retrieveItem: (id: string) => {
@@ -63,7 +92,8 @@ export class CitationEngine {
       }
     };
 
-    this.citeproc = new CSL.Engine(this.sys, MINIMAL_APA_STYLE);
+    const styleXml = style === 'ieee' ? MINIMAL_IEEE_STYLE : (style === 'mla' ? MINIMAL_MLA_STYLE : MINIMAL_APA_STYLE);
+    this.citeproc = new CSL.Engine(this.sys, styleXml);
   }
 
   private transformToCSL(item: any) {

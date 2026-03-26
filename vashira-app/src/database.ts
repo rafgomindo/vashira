@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 import path from 'path';
+import fs from 'fs';
 import { app } from 'electron';
 
 let db: any;
@@ -10,7 +11,6 @@ export function initDatabase() {
   
   // Create tables based on Zotero's core logic: Items, Creators, Collections
   db.exec(`
-    CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       itemType TEXT,
@@ -20,7 +20,9 @@ export function initDatabase() {
       abstract TEXT,
       url TEXT,
       doi TEXT,
-      filePath TEXT
+      filePath TEXT,
+      extra TEXT,
+      tags TEXT
     );
 
     CREATE TABLE IF NOT EXISTS creators (
@@ -69,7 +71,18 @@ export function initDatabase() {
   `);
   
   console.log('Vashira Database initialized at:', dbPath);
+  
+  // Create Storage Directory
+  const storagePath = getStoragePath();
+  if (!fs.existsSync(storagePath)) {
+    fs.mkdirSync(storagePath, { recursive: true });
+  }
+
   return db;
+}
+
+export function getStoragePath() {
+  return path.join(app.getPath('userData'), 'vashira_storage');
 }
 
 export function getItems() {
@@ -112,8 +125,8 @@ function logSync(action: string, targetTable: string, targetId: number, data: an
 
 export function addItem(item: any) {
   const info = db.prepare(`
-    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath, extra) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     item.title, 
     item.itemType, 
@@ -122,7 +135,8 @@ export function addItem(item: any) {
     item.published || '', 
     item.abstract || '', 
     item.url || '', 
-    item.filePath || ''
+    item.filePath || '',
+    item.extra || ''
   );
   
   const itemId = info.lastInsertRowid;
