@@ -228,9 +228,9 @@ const App: React.FC = () => {
         loadItems();
         loadSyncData();
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showToast("Mastery interrupted.", "alert");
+      showToast(e.message || "Mastery interrupted.", "alert");
     } finally {
       setLoading(false);
       setIsImportMenuOpen(false);

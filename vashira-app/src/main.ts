@@ -83,31 +83,39 @@ app.on('ready', () => {
 
     const sourcePath = filePaths[0];
     const fileName = path.basename(sourcePath);
-    const destPath = path.join(getStoragePath(), fileName);
+    const storagePath = getStoragePath();
+    const destPath = path.join(storagePath, fileName);
 
     try {
-      // Copy to vault
-      fs.copyFileSync(sourcePath, destPath);
+      // Ensure storage directory exists
+      if (!fs.existsSync(storagePath)) {
+        fs.mkdirSync(storagePath, { recursive: true });
+      }
 
-      // Read for metadata
-      const buffer = Buffer.alloc(20000); // 20KB for better chance
-      const fd = fs.openSync(destPath, 'r');
-      fs.readSync(fd, buffer, 0, 20000, 0);
-      fs.closeSync(fd);
+      // Copy to vault (async to avoid blocking)
+      await fs.promises.copyFile(sourcePath, destPath);
+
+      // Read for metadata (small chunk)
+      const handle = await fs.promises.open(destPath, 'r');
+      const { buffer } = await handle.read(Buffer.alloc(20000), 0, 20000, 0);
+      await handle.close();
 
       const text = buffer.toString('utf8');
       const doi = extractDOIFromText(text);
 
       let metadata: any = null;
       if (doi) {
-        metadata = await fetchMetadataFromDOI(doi);
+        try {
+          metadata = await fetchMetadataFromDOI(doi);
+        } catch (e) {
+          console.warn('DOI fetch failed, falling back to heuristics.');
+        }
       }
       
       if (!metadata) {
-        // Use heuristics
         const h = extractMetadataFromHeuristics(text);
         metadata = {
-            title: h.title || fileName,
+            title: h.title || fileName || 'Imported PDF',
             itemType: 'journalArticle',
             authors: 'Extracted Content',
             published: 'N/A',
@@ -117,9 +125,9 @@ app.on('ready', () => {
       }
 
       return { ...metadata, filePath: destPath };
-    } catch (error) {
+    } catch (error: any) {
       console.error('PDF Import error:', error);
-      return null;
+      throw new Error(`Mastery interrupted: ${error.message}`);
     }
   });
 

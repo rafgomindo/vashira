@@ -1,16 +1,34 @@
 const Database = require('better-sqlite3');
 import path from 'path';
 import fs from 'fs';
-import { app } from 'electron';
-
 let db: any;
 
+/**
+ * Resolved Database Path
+ * In Electron: app.getPath('userData')
+ * In Headless: VASHIRA_PATH env or current directory
+ */
+function resolveDbPath() {
+  try {
+    const { app } = require('electron');
+    if (app && app.isReady()) {
+      return path.join(app.getPath('userData'), 'vashira.db');
+    }
+  } catch (e) {
+    // Electron not available
+  }
+  
+  const base = process.env.VASHIRA_HUB_PATH || process.cwd();
+  return path.join(base, 'vashira.db');
+}
+
 export function initDatabase() {
-  const dbPath = path.join(app.getPath('userData'), 'vashira.db');
+  const dbPath = resolveDbPath();
   db = new Database(dbPath);
   
   // Create tables based on Zotero's core logic: Items, Creators, Collections
   db.exec(`
+    CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       itemType TEXT,
@@ -93,10 +111,39 @@ export function initDatabase() {
     );
   `);
 
+  // [VASHIRA 4.0] Sovereign Schema Guard: Proactive Migration
+  const columns = db.prepare("PRAGMA table_info(items)").all();
+  const columnNames = columns.map((c: any) => c.name);
+  
+  const requiredColumns = [
+    { name: 'authors', type: 'TEXT' },
+    { name: 'published', type: 'TEXT' },
+    { name: 'abstract', type: 'TEXT' },
+    { name: 'url', type: 'TEXT' },
+    { name: 'doi', type: 'TEXT' },
+    { name: 'filePath', type: 'TEXT' },
+    { name: 'extra', type: 'TEXT' },
+    { name: 'tags', type: 'TEXT' }
+  ];
+
+  requiredColumns.forEach(col => {
+    if (!columnNames.includes(col.name)) {
+      try {
+        db.exec(`ALTER TABLE items ADD COLUMN ${col.name} ${col.type};`);
+        console.log(`[Schema Guard] Injected missing column: ${col.name}`);
+      } catch (e) {
+        console.error(`[Schema Guard] Failed to inject ${col.name}:`, e);
+      }
+    }
+  });
+
   // [VASHIRA 4.0] Seed Welcome Data
   const itemCheck = db.prepare('SELECT COUNT(*) as count FROM items').get();
   if (itemCheck && itemCheck.count === 0) {
-    const welcomeTagId = db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)').run('Mastery', '#a78bfa').lastInsertRowid;
+    db.prepare('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)').run('Mastery', '#a78bfa');
+    const tag = db.prepare('SELECT id FROM tags WHERE name = ?').get('Mastery');
+    const welcomeTagId = tag?.id;
+
     const itemId = db.prepare(`
       INSERT INTO items (title, itemType, authors, published, abstract, extra)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -108,7 +155,10 @@ export function initDatabase() {
       'This is your first sovereign research item. Explore tags, collections, and P2P sync.',
       'Welcome to Vashira 4.0'
     ).lastInsertRowid;
-    db.prepare('INSERT INTO item_tags (itemId, tagId) VALUES (?, ?)').run(itemId, welcomeTagId);
+
+    if (welcomeTagId) {
+        db.prepare('INSERT OR IGNORE INTO item_tags (itemId, tagId) VALUES (?, ?)').run(itemId, welcomeTagId);
+    }
   }
   
   console.log('Vashira Database initialized at:', dbPath);
@@ -123,7 +173,17 @@ export function initDatabase() {
 }
 
 export function getStoragePath() {
-  return path.join(app.getPath('userData'), 'vashira_storage');
+  try {
+    const { app } = require('electron');
+    if (app && app.isReady()) {
+      return path.join(app.getPath('userData'), 'vashira_storage');
+    }
+  } catch (e) {
+    // Electron not available
+  }
+
+  const base = process.env.VASHIRA_HUB_PATH || process.cwd();
+  return path.join(base, 'vashira_storage');
 }
 
 export function getItems() {
