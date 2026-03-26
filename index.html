@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vashira | Research Mastery Hub</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Outfit:wght@300;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0d0d12;
+            --accent: #a78bfa;
+            --text: #ffffff;
+            --text-dim: #94a3b8;
+            --card: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        .gradient-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 50% -20%, rgba(167, 139, 250, 0.15), transparent 60%);
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        nav {
+            padding: 40px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .nav-links auto {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .nav-links a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+        
+        .nav-links a:hover {
+            color: var(--text);
+        }
+
+        .hero {
+            padding: 100px 0;
+            text-align: center;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 4rem;
+            font-weight: 800;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #fff 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-dim);
+            max-width: 700px;
+            margin: 0 auto 40px;
+        }
+
+        .badge {
+            background: rgba(167, 139, 250, 0.1);
+            color: var(--accent);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            display: inline-block;
+            border: 1px solid rgba(167, 139, 250, 0.2);
+        }
+
+        .cta-button {
+            background: var(--accent);
+            color: var(--bg);
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-block;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(167, 139, 250, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 0.2s, background 0.2s;
+            display: inline-block;
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-top: 40px;
+        }
+
+        .feature-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 32px;
+            border-radius: 24px;
+            transition: border-color 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent);
+        }
+
+        .feature-card h3 {
+            font-family: 'Outfit', sans-serif;
+            margin-bottom: 12px;
+            font-size: 1.2rem;
+        }
+
+        .feature-card p {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 16px;
+        }
+
+        .section-header {
+            text-align: center;
+            margin: 100px 0 60px;
+        }
+
+        .section-header h2 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .section-header p {
+            color: var(--text-dim);
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        footer {
+            margin-top: 120px;
+            padding: 60px 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .footer-logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            color: #fff;
+            margin-bottom: 16px;
+        }
+
+        .copyright {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        .legal-section {
+            padding: 60px; 
+            background: var(--card); 
+            border-radius: 40px; 
+            margin-top: 100px;
+            border: 1px solid var(--border);
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5rem; }
+            .features { grid-template-columns: 1fr; }
+            .legal-section > div { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="gradient-bg"></div>
+    
+    <div class="container">
+        <nav>
+            <a href="#" class="logo">VASHIRA</a>
+            <div class="nav-links">
+                <a href="#philosophy">Philosophy</a>
+                <a href="#p2p">P2P Network</a>
+                <a href="#legal">European Identity</a>
+                <a href="https://github.com/rafgomindo/vashira" target="_blank">GitHub</a>
+            </div>
+        </nav>
+
+        <section class="hero">
+            <span class="badge">Mastery Reimagined</span>
+                <p class="hero-description animate-slideUp">
+                    The European, local-first research operating system for the modern intellectual. Capture knowledge, organize mastery, and cite with precision. Featuring <strong>Vashira 2.0</strong> with real decentralized P2P metadata broadcasting.
+                </p>
+                <div class="hero-actions animate-slideUp">
+                    <a href="https://github.com/rafgomindo/vashira" class="cta-primary">
+                        <span>Get Vashira 2.0</span>
+                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7a3.37 3.37 0 0 0-.94 2.58V22"></path></svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- P2P Section -->
+    <section id="p2p" class="features-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Decentralized Mastery 2.0</h2>
+                <p class="section-subtitle">Real-time local network sync. No central servers. No data harvesting.</p>
+            </div>
+            
+    <!-- Zotero-Inspired Feature Buckets -->
+    <section class="features" style="padding: 100px 0;">
+        <div class="container">
+            <h2 class="section-title">The Master's Pillars</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📥</div>
+                    <h3>1. Collect</h3>
+                    <p>Fetch metadata instantly via <b>DOI, ISBN, or PMID</b>. Import your legacy library with full <b>BibTeX and RIS</b> support.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🗃️</div>
+                    <h3>2. Organize</h3>
+                    <p>Manage <b>articles and publications</b> with hierarchical <b>Collections</b> and color-coded <b>Mastery Tags</b>.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🖋️</div>
+                    <h3>3. Cite</h3>
+                    <p>Generate professional <b>bibliographies</b> (APA, IEEE, MLA) and extract <b>quotes</b> directly from the built-in PDF reader.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⛓️</div>
+                    <h3>4. Synapse</h3>
+                    <p>Synchronize your <b>academic database</b> over a decentralized <b>P2P network</b>. No central cloud, no limits, total sovereignty.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Trust & Sovereignty -->
+    <section class="sovereignty" style="padding: 100px 0; background: var(--card); border-top: 1px solid var(--border);">
+        <div class="container" style="text-align: center;">
+            <h2 class="section-title">Academic Sovereign Status</h2>
+            <p style="max-width: 800px; margin: 0 auto 40px; color: var(--text-dim); line-height: 1.8;">
+                Vashira is designed for <b>Rafael Domingo Ramones</b> and the global community of researchers who value <b>Academic Independence</b>. Unlike corporate research tools, Vashira is:
+            </p>
+            <ul style="list-style: none; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; font-weight: 600;">
+                <li>🛡️ 100% Local-First</li>
+                <li>🇪🇺 GDPR-Native</li>
+                <li>🔗 P2P Encrypted</li>
+                <li>💎 Open-Source Integrity</li>
+            </ul>
+        </div>
+    </section>
+        <section id="philosophy">
+            <div class="section-header">
+                <h2>The Meaning of Mastery</h2>
+                <p>
+                    The name <strong>वशीर (Vaśīra)</strong> is derived from Sanskrit, meaning <em>"The one who possesses mastery"</em> or <em>"Self-controlled."</em> Vashira is built on the principle that your research is your own dominion. Unlike cloud-locked platforms, this program grants you total sovereignty over your intellectual capital.
+                </p>
+            </div>
+            
+            <div class="features">
+                <div class="feature-card">
+                    <div class="feature-icon">📁</div>
+                    <h3>Collections</h3>
+                    <p>Hierarchical knowledge mapping. Organize your research into meaningful domains of mastery with nested folders and deep-link logic.</p>
+                </div>
+                <div class="feature-card" id="p2p">
+                    <div class="feature-icon">🌐</div>
+                    <h3>Decentralized P2P</h3>
+                    <p>Peer-to-Peer metadata exchange. Discover DOIs from other "Masters" on your local network without ever touching a central server. Private, fast, and resilient.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">✒️</div>
+                    <h3>Citation Engine</h3>
+                    <p>Publication-ready bibliographies in real-time. Powered by citeproc-js for absolute precision in APA, MLA, and Chicago styles.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="legal" class="legal-section">
+            <div style="display: flex; gap: 40px; align-items: center;">
+                <div style="flex: 1; min-width: 300px;">
+                    <h2 style="font-size: 2.5rem; margin-bottom: 24px; font-family: 'Outfit';">European Integrity</h2>
+                    <p style="color: var(--text-dim); line-height: 1.8; margin-bottom: 20px;">
+                        Vashira is proudly <strong>European by Design</strong>. In a world of invasive data harvesting, we adhere to the strictest digital rights standards. 
+                    </p>
+                    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 16px;">
+                        <li style="display: flex; gap: 12px; align-items: center; color: var(--text-dim);">
+                            <span style="color: #10b981; font-weight: bold;">✓</span> GDPR-Native Privacy (No tracking)
+                        </li>
+                        <li style="display: flex; gap: 12px; align-items: center; color: var(--text-dim);">
+                            <span style="color: #10b981; font-weight: bold;">✓</span> EU-Sync Encrypted Protocols
+                        </li>
+                        <li style="display: flex; gap: 12px; align-items: center; color: var(--text-dim);">
+                            <span style="color: #10b981; font-weight: bold;">✓</span> Distributed Architecture
+                        </li>
+                    </ul>
+                </div>
+                <div style="flex: 1; min-width: 300px; background: rgba(0,0,0,0.3); padding: 40px; border-radius: 24px; border: 1px solid var(--border);">
+                    <div style="font-family: monospace; color: var(--accent); margin-bottom: 12px;">// SYSTEM_STATUS</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 8px;">Mastery Hub Active</div>
+                    <div style="color: var(--text-dim); font-size: 0.9rem;">Node ID: master_rafael_01</div>
+                    <div style="margin-top: 24px; height: 2px; background: var(--border); position: relative;">
+                        <div style="position: absolute; left: 0; top: 0; height: 100%; width: 70%; background: var(--accent);"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <div class="footer-logo">VASHIRA ORG</div>
+            <p class="copyright">© 2026 Rafael Domingo Ramones. Tous droits réservés.</p>
+            <p class="copyright" style="margin-top: 8px; color: var(--accent);">Program web concept par "Le Rafael" 😎 @ Ram0nes.com .</p>
+            <div style="margin-top: 20px; display: flex; gap: 20px; justify-content: center;">
+                <a href="https://ram0nes.com" target="_blank" style="color: var(--text-dim); text-decoration: none;">Website</a>
+                <a href="https://github.com/rafgomindo/vashira" target="_blank" style="color: var(--text-dim); text-decoration: none;">GitHub</a>
+                <a href="https://vashira.org" style="color: var(--text-dim); text-decoration: none;">Documentation</a>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
