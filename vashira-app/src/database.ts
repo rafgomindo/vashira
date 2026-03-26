@@ -109,6 +109,12 @@ export function initDatabase() {
       FOREIGN KEY(itemId) REFERENCES items(id),
       FOREIGN KEY(relatedItemId) REFERENCES items(id)
     );
+
+    CREATE TABLE IF NOT EXISTS search_index (
+      itemId INTEGER PRIMARY KEY,
+      fullText TEXT,
+      FOREIGN KEY(itemId) REFERENCES items(id)
+    );
   `);
 
   // [VASHIRA 4.0] Sovereign Schema Guard: Proactive Migration
@@ -123,7 +129,8 @@ export function initDatabase() {
     { name: 'doi', type: 'TEXT' },
     { name: 'filePath', type: 'TEXT' },
     { name: 'extra', type: 'TEXT' },
-    { name: 'tags', type: 'TEXT' }
+    { name: 'tags', type: 'TEXT' },
+    { name: 'snapshotPath', type: 'TEXT' }
   ];
 
   requiredColumns.forEach(col => {
@@ -226,8 +233,8 @@ function logSync(action: string, targetTable: string, targetId: number, data: an
 
 export function addItem(item: any) {
   const info = db.prepare(`
-    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath, extra) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath, snapshotPath, extra) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     item.title, 
     item.itemType, 
@@ -237,6 +244,7 @@ export function addItem(item: any) {
     item.abstract || '', 
     item.url || '', 
     item.filePath || '',
+    item.snapshotPath || '',
     item.extra || ''
   );
   
@@ -248,6 +256,20 @@ export function addItem(item: any) {
 export function getNotes(itemId: number) {
   return db.prepare('SELECT * FROM notes WHERE itemId = ?').all(itemId);
 }
+
+export const addFullText = (itemId: number, text: string) => {
+  const stmt = db.prepare('INSERT OR REPLACE INTO search_index (itemId, content) VALUES (?, ?)');
+  stmt.run(itemId, text);
+};
+
+export const searchDeep = (query: string): any[] => {
+  const stmt = db.prepare(`
+    SELECT i.* FROM items i
+    JOIN search_index s ON i.id = s.itemId
+    WHERE s.content LIKE ? OR i.title LIKE ?
+  `);
+  return stmt.all(`%${query}%`, `%${query}%`);
+};
 
 export function addNote(itemId: number, content: string) {
   const info = db.prepare('INSERT INTO notes (itemId, content) VALUES (?, ?)').run(itemId, content);
@@ -314,4 +336,11 @@ export function getItemsByTag(tagId: number) {
     WHERE item_tags.tagId = ?
     ORDER BY items.dateAdded DESC
   `).all(tagId);
+}
+
+export function updateItem(id: number, fields: any) {
+  const keys = Object.keys(fields);
+  const assignments = keys.map(k => `\${k} = ?`).join(', ');
+  const values = keys.map(k => fields[k]);
+  return db.prepare(`UPDATE items SET \${assignments} WHERE id = ?`).run(...values, id);
 }

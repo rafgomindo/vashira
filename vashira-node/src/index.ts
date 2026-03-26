@@ -18,33 +18,72 @@ const app = express();
 // Note: database.ts was refactored to use process.cwd() or VASHIRA_HUB_PATH if Electron is missing.
 initDatabase();
 
-// Headless Hub Status API
-app.get('/', (req, res) => {
-  const items = getItems();
-  res.json({
-    status: 'ONLINE',
-    system: 'Vashira Headless Node',
-    version: '4.0.0',
-    masteryCount: items.length,
-    peers: discoveryEngine.getOnlinePeers()
-  });
+// API: List mastery items
+app.get('/api/items', (req, res) => {
+  res.json(getItems());
 });
 
-// Start the P2P Sovereign Discovery
-console.log('--- Vashira Sovereign Hub Starting ---');
-console.log('ID: [SOVEREIGN_NODE_4.0]');
+// API: Search mastery
+app.get('/api/search', (req, res) => {
+  const q = (req.query.q as string || '').toLowerCase();
+  const items = getItems().filter(i => 
+    i.title.toLowerCase().includes(q) || 
+    i.authors?.toLowerCase().includes(q) || 
+    i.abstract?.toLowerCase().includes(q)
+  );
+  res.json(items);
+});
 
-// Periodically announce the most recent Mastery items to the network
-setInterval(() => {
+// Web View: Remote Mastery Dashboard
+app.get('/', (req, res) => {
   const items = getItems();
-  if (items.length > 0) {
-    const latest = items[0];
-    console.log(`[P2P] Announcing Mastery over: ${latest.title}`);
-    discoveryEngine.announceMetadata(latest.doi || 'SOVEREIGN_IDENTITY', latest.title);
-  }
-}, 30000); // Every 30 seconds
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Vashira Remote Mastery</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+      <style>
+        body { background: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .card { background: #1e293b; border: 1px solid #334155; color: #f8fafc; margin-bottom: 20px; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-5px); border-color: #a78bfa; }
+        .badge { background: #a78bfa; color: #1e1b4b; }
+        .header { background: linear-gradient(135deg, #4c1d95 0%, #1e1b4b 100%); padding: 40px 20px; border-bottom: 2px solid #a78bfa; margin-bottom: 40px; }
+      </style>
+    </head>
+    <body>
+      <div class="header text-center">
+        <h1 class="display-4 fw-bold">Vashira Remote Hub</h1>
+        <p class="lead">Sovereign Knowledge Access • ${items.length} Masteries</p>
+      </div>
+      <div class="container">
+        <div class="row">
+          ${items.map(item => `
+            <div class="col-md-6">
+              <div class="card h-100 p-4">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <span class="badge mb-2">${item.itemType}</span>
+                  <small class="text-secondary">${new Date(item.dateAdded).toLocaleDateString()}</small>
+                </div>
+                <h5 class="card-title fw-bold">${item.title}</h5>
+                <p class="card-text text-secondary small">${item.authors || 'Unknown Creator'}</p>
+                <div class="mt-auto">
+                   <a href="https://doi.org/${item.doi}" target="_blank" class="btn btn-sm btn-outline-info" ${!item.doi ? 'style="display:none"' : ''}>View DOI</a>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+  res.send(html);
+});
 
 app.listen(PORT, () => {
-  console.log(`--- Hub Status API live at http://localhost:${PORT} ---`);
-  console.log('--- Peer-to-Peer Discovery ACTIVE (Port 41234) ---');
+  console.log(`--- Vashira Cloud Gateway LIVE at http://localhost:${PORT} ---`);
+  console.log('--- Sovereign Access Mastery ACTIVE ---');
 });

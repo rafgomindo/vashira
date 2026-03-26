@@ -1,0 +1,28 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Electron/Build
+out/
+dist/
+.vite/
+*.log
+
+# Vashira Local Data (Sovereign Vault - Do not share)
+vashira.db
+vashira_storage/
+vault/
+*.pdf
+vashira-extension/*.zip
+vashira-word-addin/*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

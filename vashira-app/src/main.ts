@@ -2,9 +2,13 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
-import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath } from './database';
+import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath, updateItem } from './database';
+import { StyleStore } from './styles';
 import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText } from './gatherer';
-import { parseBibTeX, parseRIS, extractMetadataFromHeuristics } from './parser';
+import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser';
+import { discoveryEngine } from './discovery';
+import http from 'node:http';
+import { captureSnapshot } from './archiver';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -42,6 +46,7 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 app.on('ready', () => {
   initDatabase();
+  const styleStore = new StyleStore(app.getPath('userData'));
   
   // IPC Handlers
   ipcMain.handle('get-items', () => getItems());
@@ -50,16 +55,24 @@ app.on('ready', () => {
   ipcMain.handle('add-note', (_, itemId, content) => addNote(itemId, content));
   ipcMain.handle('fetch-metadata', (_, doi) => fetchMetadataFromDOI(doi));
   
-  ipcMain.handle('generate-citation', async (_, itemId) => {
-    const { getItemById, getItems } = require('./database');
+  ipcMain.handle('generate-citation', async (_, itemId, styleName = 'apa') => {
+    const { getItemById } = require('./database');
     const { CitationEngine } = require('./citation');
     const item = getItemById(itemId);
     if (!item) return null;
     
-    // We pass all items for context or just the one? citeproc-js usually needs the full set or at least the target.
-    const engine = new CitationEngine([item]);
-    return engine.formatCitation(itemId);
+    try {
+      const styleXml = await styleStore.getStyleXml(styleName);
+      const engine = new CitationEngine([item], styleXml);
+      return engine.formatCitation(itemId);
+    } catch (e) {
+      console.error(e);
+      return "Citation formatting failed.";
+    }
   });
+
+  ipcMain.handle('get-installed-styles', () => styleStore.listCachedStyles());
+  ipcMain.handle('install-style', (_, styleName) => styleStore.getStyleXml(styleName));
   
   // Collections
   ipcMain.handle('get-collections', () => require('./database').getCollections());
@@ -124,7 +137,15 @@ app.on('ready', () => {
         };
       }
 
-      return { ...metadata, filePath: destPath };
+      const indexedItem = { ...metadata, filePath: destPath };
+      // [VASHIRA 4.0] Trigger Deep Indexing
+      if (destPath) {
+        setTimeout(async () => {
+          const { indexItemTask } = require('./indexer');
+          await indexItemTask(indexedItem);
+        }, 100);
+      }
+      return indexedItem;
     } catch (error: any) {
       console.error('PDF Import error:', error);
       throw new Error(`Mastery interrupted: ${error.message}`);
@@ -162,7 +183,30 @@ app.on('ready', () => {
   ipcMain.handle('get-all-tags', () => require('./database').getAllTags());
   ipcMain.handle('add-tag-to-item', (_, itemId, tagId) => require('./database').addTagToItem(itemId, tagId));
   ipcMain.handle('remove-tag-from-item', (_, itemId, tagId) => require('./database').removeTagFromItem(itemId, tagId));
+  ipcMain.handle('search-deep', (_, query) => require('./database').searchDeep(query));
+  ipcMain.handle('index-item', (_, item) => require('./indexer').indexItemTask(item));
+  ipcMain.handle('search-global', (_, query) => require('./discovery_api').searchOpenAlex(query));
+  
   ipcMain.handle('get-items-by-category', (_, category) => require('./database').getItemsByCategory(category));
+
+  ipcMain.handle('export-bibtex', async (_, items) => {
+    const bib = generateBibTeX(items);
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export Mastery Hub',
+      defaultPath: 'vashira_library.bib',
+      filters: [{ name: 'BibTeX', extensions: ['bib'] }]
+    });
+    if (filePath) {
+      fs.writeFileSync(filePath, bib);
+      return true;
+    }
+    return false;
+  });
+
+  ipcMain.handle('magic-categorize', async () => {
+    const items = await getItems();
+    return categorizeItems(items);
+  });
 
   ipcMain.handle('open-file', async (_, filePath) => {
     const { shell } = require('electron');
@@ -173,7 +217,89 @@ app.on('ready', () => {
     return false;
   });
 
+  // P2P Mastery Exchange
+  discoveryEngine.on('metadata-request', async ({ doi, peer }) => {
+    const allItems = await getItems();
+    const item = allItems.find((i: any) => i.doi === doi);
+    if (item) {
+      discoveryEngine.sendMetadata(item, peer);
+    }
+  });
+
+  ipcMain.handle('import-from-peer', async (_, doi, peerIp) => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        discoveryEngine.off('metadata-response', handleResponse);
+        reject(new Error("Peer mastery timed out."));
+      }, 5000);
+
+      const handleResponse = (metadata: any) => {
+        if (metadata && metadata.doi === doi) {
+          clearTimeout(timeout);
+          discoveryEngine.off('metadata-response', handleResponse);
+          resolve(metadata);
+        }
+      };
+
+      discoveryEngine.on('metadata-response', handleResponse);
+      discoveryEngine.requestMetadata(doi, peerIp);
+    });
+  });
+
   createWindow();
+
+  // THE WEB-SNATCHER (5.0) & SCRIBE BRIDGE (6.0)
+  const snatcher = http.createServer(async (req, res) => {
+    // Enable CORS for Extensions and Word Add-in
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204); res.end(); return;
+    }
+
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', async () => {
+        try {
+          const item = JSON.parse(body);
+          const itemId = await addItem(item);
+          
+          if (mainWindow) {
+            mainWindow.webContents.send('snatched-item', item);
+          }
+
+          // ASYNC ARCHIVING
+          if (item.url) {
+            setTimeout(async () => {
+              const snapshotPath = await captureSnapshot(item.url, getStoragePath(), itemId as number);
+              if (snapshotPath) {
+                updateItem(itemId as number, { snapshotPath });
+              }
+            }, 500);
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'Mastered' }));
+        } catch (e) {
+          res.writeHead(400); res.end('Invalid Metadata');
+        }
+      });
+    } else if (req.method === 'GET' && req.url === '/items') {
+      try {
+        const items = await getItems();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(items));
+      } catch (e) {
+        res.writeHead(500); res.end('Hub Error');
+      }
+    } else {
+      res.writeHead(404); res.end();
+    }
+  });
+  snatcher.listen(51235, () => console.log('[Snatcher] Ready on port 51235'));
 });
 
 // Quit when all windows are closed, except on macOS.

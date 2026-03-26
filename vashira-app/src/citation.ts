@@ -83,7 +83,7 @@ export class CitationEngine {
   private citeproc: any;
   private sys: any;
 
-  constructor(items: any[], style: 'apa' | 'ieee' | 'mla' = 'apa') {
+  constructor(items: any[], styleXml: string) {
     this.sys = {
       retrieveLocale: () => MINIMAL_LOCALE,
       retrieveItem: (id: string) => {
@@ -92,18 +92,25 @@ export class CitationEngine {
       }
     };
 
-    const styleXml = style === 'ieee' ? MINIMAL_IEEE_STYLE : (style === 'mla' ? MINIMAL_MLA_STYLE : MINIMAL_APA_STYLE);
     this.citeproc = new CSL.Engine(this.sys, styleXml);
   }
 
   private transformToCSL(item: any) {
+    // Advanced Mapping for Professional Mastery
     return {
       id: item.id.toString(),
       type: 'article-journal',
       title: item.title,
       DOI: item.doi,
-      author: item.authors ? item.authors.split(',').map((a: string) => ({ family: a.trim() })) : [],
+      author: item.authors ? item.authors.split(',').map((a: string) => {
+        const parts = a.trim().split(' ');
+        return { 
+          family: parts[parts.length - 1], 
+          given: parts.length > 1 ? parts.slice(0, -1).join(' ') : '' 
+        };
+      }) : [],
       issued: { 'date-parts': [[new Date(item.dateAdded).getFullYear()]] },
+      'container-title': item.published || 'Unknown Source'
     };
   }
 

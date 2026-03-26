@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp 
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+  xsi:type="TaskPaneApp">
+  <Id>5d6f1a8c-7b2e-4a9d-9c3f-8e1d2c3b4a5d</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Vashira Sovereign</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Vashira Scribe" />
+  <Description DefaultValue="Insert citations directly from your Vashira Mastery Hub." />
+  <Icons>
+    <Icon Size="32" ResourceId="Icon32" />
+  </Icons>
+  <Hosts>
+    <Host Name="Document" />
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://localhost:3000/taskpane.html" />
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <Resources>
+    <bt:Images xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0">
+      <bt:Image id="Icon32" DefaultValue="https://localhost:3000/icon-32.png" />
+    </bt:Images>
+  </Resources>
+</OfficeApp>

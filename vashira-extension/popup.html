@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 300px; padding: 16px; font-family: sans-serif; background: #0d0d12; color: white; }
+    .btn { background: #6366f1; color: white; border: none; padding: 10px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    .btn:hover { background: #4f46e5; }
+    h2 { font-size: 1.1rem; margin-bottom: 8px; color: #6366f1; }
+    p { font-size: 0.8rem; color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <h2>Vashira Snatcher-X</h2>
+  <p id="status">Scanning page for research mastery...</p>
+  <button id="masterBtn" class="btn" style="display:none">MASTER THIS PAGE</button>
+  
+  <script>
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_METADATA' }, (response) => {
+        if (response && response.doi) {
+          document.getElementById('status').innerText = `DOI Found: ${response.doi}`;
+          document.getElementById('masterBtn').style.display = 'block';
+          document.getElementById('masterBtn').onclick = () => {
+            chrome.runtime.sendMessage({ type: 'MASTER_PAGE', data: response });
+            document.getElementById('status').innerText = "Vashira is mastering this work...";
+            document.getElementById('masterBtn').disabled = true;
+          };
+        } else {
+          document.getElementById('status').innerText = "No DOI Mastered on this page.";
+        }
+      });
+    });
+  </script>
+</body>
+</html>

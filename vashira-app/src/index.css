@@ -2,13 +2,16 @@
 
 :root {
   --bg-color: #0d0d12;
-  --sidebar-bg: rgba(18, 18, 23, 0.8);
-  --accent-color: #7c3aed; /* Purple/Indigo */
-  --accent-secondary: #4f46e5;
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
+  --sidebar-color: rgba(18, 18, 24, 0.85); /* Glass Effect */
+  --accent-color: #a78bfa;
+  --accent-hover: #8b5cf6;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
   --border-color: rgba(255, 255, 255, 0.08);
-  --glass-effect: blur(16px) saturate(180%);
+  --card-bg: rgba(30, 41, 59, 0.4); /* Frosted Glass */
+  --highlight-color: rgba(167, 139, 250, 0.15);
+  --glass-blur: blur(24px);
+  --premium-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
   --sidebar-width: 260px;
 }
 
@@ -16,16 +19,17 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  user-select: none;
+  border-radius: 4px; /* Global subtlety */
 }
 
 body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-primary);
-  overflow: hidden;
   height: 100vh;
-  width: 100vw;
+  margin: 0;
+  overflow: hidden;
+  display: flex;
 }
 
 #root {
@@ -53,9 +57,9 @@ body {
 
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--sidebar-bg);
-  backdrop-filter: var(--glass-effect);
-  -webkit-backdrop-filter: var(--glass-effect);
+  background: var(--sidebar-color);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -83,6 +87,7 @@ body {
   letter-spacing: -0.025em;
   background: linear-gradient(135deg, #a78bfa 0%, #6366f1 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -226,4 +231,258 @@ body {
 
 .secondary-button:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* Mastery Search */
+.search-container {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0 12px;
+  width: 240px;
+  height: 36px;
+  transition: all 0.2s ease;
+}
+
+.search-container:focus-within {
+  border-color: var(--accent-color);
+  background: rgba(124, 58, 237, 0.05);
+  width: 280px;
+}
+
+.search-input {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  width: 100%;
+  padding: 0 8px;
+  outline: none;
+}
+
+.search-icon {
+  color: var(--text-secondary);
+}
+
+/* Mastery Table View */
+.table-container {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.mastery-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.mastery-table th {
+  text-align: left;
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.mastery-table th:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.mastery-table th.sorted {
+  color: var(--accent-color);
+}
+
+.mastery-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.mastery-table tr {
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.mastery-table tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.mastery-table tr.active {
+  background: rgba(124, 58, 237, 0.1);
+}
+
+.mastery-table tr.active td {
+  color: #a78bfa;
+}
+
+.cell-title {
+  font-weight: 500;
+  max-width: 400px !important;
+}
+
+.pdf-ready {
+  color: #10b981;
+}
+
+.pdf-none {
+  color: var(--border-color);
+}
+
+/* Metadata Sidebar / Knowledge Hub */
+.knowledge-hub {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 18, 23, 0.4);
+  backdrop-filter: blur(10px);
+  border-left: 1px solid var(--border-color);
+  height: 100%;
+  padding: 0;
+}
+
+.hub-header {
+  padding: 24px 20px 0 20px;
+}
+
+.meta-scroll-area {
+  margin-top: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.meta-field {
+  margin-bottom: 16px;
+}
+
+.meta-field label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.meta-value {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.abstract-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hub-content {
+  padding: 20px;
+}
+
+.hub-section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+.note-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.hub-footer {
+  padding: 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  resize: none;
+  height: 80px;
+  margin-bottom: 12px;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.full-width {
+  width: 100%;
+  justify-content: center;
+}
+
+.icon-button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+/* PDF Sidebar */
+.pdf-sidebar {
+  width: 350px;
+  background: var(--bg-color);
+  border-left: 1px solid var(--border-color);
+  height: 100%;
+  overflow-y: auto;
+  box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+}
+
+.pdf-reader-header .active {
+  background: rgba(124, 58, 237, 0.2);
+  border-color: var(--accent-color);
+  color: #a78bfa;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
