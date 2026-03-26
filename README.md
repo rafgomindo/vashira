@@ -1,22 +1,24 @@
-# Vashira (वशीर) : The Hub Program
+# Vashira (वशीर) 4.0: Sovereign Mastery Edition
 
 <div align="center">
-  <h3>The European, local-first alternative to Zotero.</h3>
-  <p>Featuring a decentralized P2P metadata network for worldwide, indestructible research sync.</p>
+  <img src="vashira-app/public/favicon.png" width="128" height="128" />
+  <h2>The European Sovereign Choice for Research Mastery.</h2>
+  <p>A professional, decentralized alternative to Zotero. Built for academic independence.</p>
 </div>
 
 ---
 
-## 🌍 The Vision
-Vashira is the replacement for Zotero. Designed with **European Integrity** at its core, we ensure there is zero possibility of losing your data to proprietary cloud silos. 
+## 🏛️ The Vision
+Vashira 4.0 is the definitive **Sovereign Research Hub**. Engineered with **European Integrity**, we eliminate reliance on proprietary cloud silos. 
 
-But we go further than just local storage: our DOI data streams over a **Decentralized P2P Network**. This guarantees that your research is synchronized worldwide—not only with your own devices, but contributing to a global, indestructible catalog of file metadata.
+Vashira doesn't just store files; it creates a **Mastery Vault** with a **Decentralized P2P Synapse**. This ensures your research is synchronized via DHT across your devices, contributing to a worldwide, indestructible network of scholarly metadata.
 
-## ✨ Key Features
-- **Local-First Sovereignty**: Your files, your database. Total GDPR-native privacy.
-- **Decentralized P2P Discovery**: Share and discover DOI metadata directly with other "Masters" on your network. No central server can go down.
-- **Hierarchical Collections**: Organize your research into meaningful domains of mastery.
-- **Publication-Ready Citations**: Built-in APA, MLA, and Chicago formatting powered by `citeproc-js`.
+## 💎 Premium Features
+- **Sovereign Mastery Vault**: Localized PDF storage with in-app reading and annotation.
+- **Professional Tagging**: Color-coded categorization for high-level organization.
+- **Smart Collections**: Integrated *Recently Added* and *Unfiled* views for seamless workflow.
+- **P2P Synapse Discovery**: Real-time DOI discovery over decentralized node broadcasts.
+- **Quotation Hub**: Instant extraction and formatting of excerpts (APA, IEEE, MLA).
 
 ## 🚀 Getting Started
 
