@@ -150,6 +150,12 @@ app.on('ready', () => {
     return null;
   });
 
+  // Zotero 4.0 Mastery Handlers
+  ipcMain.handle('get-all-tags', () => require('./database').getAllTags());
+  ipcMain.handle('add-tag-to-item', (_, itemId, tagId) => require('./database').addTagToItem(itemId, tagId));
+  ipcMain.handle('remove-tag-from-item', (_, itemId, tagId) => require('./database').removeTagFromItem(itemId, tagId));
+  ipcMain.handle('get-items-by-category', (_, category) => require('./database').getItemsByCategory(category));
+
   ipcMain.handle('open-file', async (_, filePath) => {
     const { shell } = require('electron');
     if (filePath && fs.existsSync(filePath)) {

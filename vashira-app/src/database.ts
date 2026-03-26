@@ -68,6 +68,29 @@ export function initDatabase() {
       dateAdded DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(itemId) REFERENCES items(id)
     );
+
+    CREATE TABLE IF NOT EXISTS tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      color TEXT DEFAULT '#a78bfa'
+    );
+
+    CREATE TABLE IF NOT EXISTS item_tags (
+      itemId INTEGER,
+      tagId INTEGER,
+      PRIMARY KEY(itemId, tagId),
+      FOREIGN KEY(itemId) REFERENCES items(id),
+      FOREIGN KEY(tagId) REFERENCES tags(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS item_relations (
+      itemId INTEGER,
+      relatedItemId INTEGER,
+      relationType TEXT DEFAULT 'related',
+      PRIMARY KEY(itemId, relatedItemId),
+      FOREIGN KEY(itemId) REFERENCES items(id),
+      FOREIGN KEY(relatedItemId) REFERENCES items(id)
+    );
   `);
   
   console.log('Vashira Database initialized at:', dbPath);
@@ -166,4 +189,51 @@ export function getSyncLog() {
 export function getSyncCount() {
   const result = db.prepare('SELECT COUNT(*) as count FROM sync_log').get();
   return result.count;
+}
+
+/**
+ * Zotero Mastery: Tags & Smart Collections
+ */
+export function getAllTags() {
+  return db.prepare('SELECT * FROM tags').all();
+}
+
+export function addTag(name: string) {
+  try {
+    const info = db.prepare('INSERT INTO tags (name) VALUES (?)').run(name);
+    return info.lastInsertRowid;
+  } catch (e) {
+    return db.prepare('SELECT id FROM tags WHERE name = ?').get(name).id;
+  }
+}
+
+export function addTagToItem(itemId: number, tagId: number) {
+  return db.prepare('INSERT OR IGNORE INTO item_tags (itemId, tagId) VALUES (?, ?)').run(itemId, tagId);
+}
+
+export function removeTagFromItem(itemId: number, tagId: number) {
+  return db.prepare('DELETE FROM item_tags WHERE itemId = ? AND tagId = ?').run(itemId, tagId);
+}
+
+export function getItemsByCategory(category: 'unfiled' | 'recent' | 'trash') {
+  if (category === 'recent') {
+    return db.prepare('SELECT * FROM items ORDER BY dateAdded DESC LIMIT 50').all();
+  }
+  if (category === 'unfiled') {
+    return db.prepare(`
+      SELECT * FROM items 
+      WHERE id NOT IN (SELECT itemId FROM collection_items)
+      ORDER BY dateAdded DESC
+    `).all();
+  }
+  return [];
+}
+
+export function getItemsByTag(tagId: number) {
+  return db.prepare(`
+    SELECT items.* FROM items
+    JOIN item_tags ON items.id = item_tags.itemId
+    WHERE item_tags.tagId = ?
+    ORDER BY items.dateAdded DESC
+  `).all(tagId);
 }

@@ -108,6 +108,9 @@ const App: React.FC = () => {
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
+  const [tags, setTags] = useState<any[]>([]);
+  const [activeTagId, setActiveTagId] = useState<number | null>(null);
+  const [smartCategory, setSmartCategory] = useState<'all' | 'unfiled' | 'recent'>('all');
 
   const loadItems = async () => {
     try {
@@ -129,6 +132,8 @@ const App: React.FC = () => {
     try {
       const data = await window.vashiraAPI.getCollections();
       setCollections(data);
+      const tagData = await (window.vashiraAPI as any).getAllTags();
+      setTags(tagData || []);
     } catch (e) {
       console.error(e);
     }
@@ -158,14 +163,21 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    loadItems();
-    loadCollections();
-    loadSyncData();
-    setStats({
-      items: items.length,
-      collections: collections.length
-    });
-  }, [activeCollectionId, activeTab, items.length, collections.length]);
+    const init = async () => {
+       if (activeTagId) {
+          const data = await (window.vashiraAPI as any).getItemsByTag(activeTagId);
+          setItems(data);
+       } else if (smartCategory !== 'all') {
+          const data = await (window.vashiraAPI as any).getItemsByCategory(smartCategory);
+          setItems(data);
+       } else {
+          loadItems();
+       }
+       loadCollections();
+       loadSyncData();
+    };
+    init();
+  }, [activeCollectionId, activeTab, activeTagId, smartCategory, items.length]);
 
   useEffect(() => {
     if (selectedItem) {
@@ -302,11 +314,29 @@ const handleOpenReader = async (item: ResearchItem) => {
         
         <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto' }}>
           <div 
-            className={`nav-item ${activeTab === 'library' && !activeCollectionId ? 'active' : ''}`}
-            onClick={() => { setActiveTab('library'); setActiveCollectionId(null); }}
+            className={`nav-item ${activeTab === 'library' && !activeCollectionId && !activeTagId && smartCategory === 'all' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('library'); setActiveCollectionId(null); setActiveTagId(null); setSmartCategory('all'); }}
           >
             <Library />
-            <span>My Library</span>
+            <span>Sovereign Vault</span>
+          </div>
+
+          <div 
+            className={`nav-item ${smartCategory === 'recent' ? 'active' : ''}`}
+            onClick={() => { setSmartCategory('recent'); setActiveCollectionId(null); setActiveTagId(null); }}
+            style={{ paddingLeft: '24px', opacity: 0.8 }}
+          >
+            <Clock size={16} />
+            <span>Recently Added</span>
+          </div>
+
+          <div 
+            className={`nav-item ${smartCategory === 'unfiled' ? 'active' : ''}`}
+            onClick={() => { setSmartCategory('unfiled'); setActiveCollectionId(null); setActiveTagId(null); }}
+            style={{ paddingLeft: '24px', opacity: 0.8 }}
+          >
+            <Folder size={16} />
+            <span>Unfiled Items</span>
           </div>
 
           <div style={{ marginTop: '20px', padding: '0 12px' }}>
@@ -324,13 +354,29 @@ const handleOpenReader = async (item: ResearchItem) => {
               <div 
                 key={col.id}
                 className={`nav-item ${activeCollectionId === col.id ? 'active' : ''}`}
-                onClick={() => { setActiveTab('library'); setActiveCollectionId(col.id); }}
+                onClick={() => { setActiveTab('library'); setActiveCollectionId(col.id); setActiveTagId(null); setSmartCategory('all'); }}
                 style={{ padding: '8px 12px', fontSize: '0.9rem' }}
               >
                 <Folder size={16} />
                 <span>{col.name}</span>
               </div>
             ))}
+          </div>
+
+          <div style={{ marginTop: '20px', padding: '0 12px' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mastery Tags</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+              {tags.map(tag => (
+                <div 
+                  key={tag.id}
+                  className={`tag-chip ${activeTagId === tag.id ? 'active' : ''}`}
+                  onClick={() => { setActiveTagId(tag.id); setActiveCollectionId(null); setSmartCategory('all'); }}
+                  style={{ background: tag.color + '20', color: tag.color, border: `1px solid ${tag.color}40`, padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer' }}
+                >
+                  {tag.name}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div style={{ height: '20px' }}></div>
@@ -470,6 +516,23 @@ const handleOpenReader = async (item: ResearchItem) => {
                         Open PDF
                       </button>
                     )}
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '12px' }}>
+                    {tags.filter(t => (selectedItem as any).tags?.split(',').includes(t.name)).map(tag => (
+                       <span key={tag.id} style={{ background: tag.color + '20', color: tag.color, padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem' }}>{tag.name}</span>
+                    ))}
+                    <button 
+                      style={{ background: 'transparent', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem', cursor: 'pointer' }}
+                      onClick={async () => {
+                        const name = prompt('Add Mastery Tag:');
+                        if (name) {
+                          const tagId = await (window.vashiraAPI as any).addTag(name);
+                          await (window.vashiraAPI as any).addTagToItem(selectedItem!.id, tagId);
+                          loadCollections(); // Refresh tags
+                        }
+                      }}
+                    >+ Tag</button>
                   </div>
                 </div>
                 
