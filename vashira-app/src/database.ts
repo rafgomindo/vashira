@@ -92,6 +92,24 @@ export function initDatabase() {
       FOREIGN KEY(relatedItemId) REFERENCES items(id)
     );
   `);
+
+  // [VASHIRA 4.0] Seed Welcome Data
+  const itemCheck = db.prepare('SELECT COUNT(*) as count FROM items').get();
+  if (itemCheck && itemCheck.count === 0) {
+    const welcomeTagId = db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)').run('Mastery', '#a78bfa').lastInsertRowid;
+    const itemId = db.prepare(`
+      INSERT INTO items (title, itemType, authors, published, abstract, extra)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      'Vashira Sovereign Mastery: A New Era of Research',
+      'journalArticle',
+      'Rafael Domingo Ramones',
+      '2024',
+      'This is your first sovereign research item. Explore tags, collections, and P2P sync.',
+      'Welcome to Vashira 4.0'
+    ).lastInsertRowid;
+    db.prepare('INSERT INTO item_tags (itemId, tagId) VALUES (?, ?)').run(itemId, welcomeTagId);
+  }
   
   console.log('Vashira Database initialized at:', dbPath);
   
