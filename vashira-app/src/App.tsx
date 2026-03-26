@@ -93,6 +93,9 @@ const App: React.FC = () => {
   const [syncCount, setSyncCount] = useState(0);
   const [peers, setPeers] = useState<string[]>([]);
   const [discoveries, setDiscoveries] = useState<PeerDiscovery[]>([]);
+  const [masterName, setMasterName] = useState('Master Rafael');
+  const [syncEnabled, setSyncEnabled] = useState(true);
+  const [stats, setStats] = useState({ items: 0, collections: 0 });
 
   const loadItems = async () => {
     try {
@@ -146,7 +149,11 @@ const App: React.FC = () => {
     loadItems();
     loadCollections();
     loadSyncData();
-  }, [activeCollectionId, activeTab]);
+    setStats({
+      items: items.length,
+      collections: collections.length
+    });
+  }, [activeCollectionId, activeTab, items.length, collections.length]);
 
   useEffect(() => {
     if (selectedItem) {
@@ -542,19 +549,47 @@ const App: React.FC = () => {
                    <Settings size={32} color="var(--accent-color)" />
                    <h2 style={{ margin: 0 }}>System Configuration</h2>
                 </div>
-                
-                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <h4 style={{ fontSize: '0.8rem', color: 'var(--accent-color)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Ownership & Mastery</h4>
-                  <p style={{ fontSize: '1rem', marginBottom: '4px', fontWeight: 600 }}>Rafael Domingo Ramones</p>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>Registered Master of the Research Hub (@raf_gomindo)</p>
-                  
-                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                    <a href="https://ram0nes.com/" target="_blank" className="social-link">Official Website</a>
-                    <a href="https://www.linkedin.com/in/rafaelramones/" target="_blank" className="social-link">LinkedIn</a>
-                    <a href="https://www.instagram.com/raf_gomindo/" target="_blank" className="social-link">Instagram</a>
-                    <a href="https://vashira.org" target="_blank" className="social-link" style={{ fontWeight: 700 }}>vashira.org</a>
-                  </div>
-                </div>
+                   <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '24px' }}>
+                    <h4 style={{ fontSize: '0.8rem', color: 'var(--accent-color)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Hub Identity</h4>
+                    <div style={{ marginBottom: '16px' }}>
+                       <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>MASTER NAME</label>
+                       <input 
+                          type="text" 
+                          value={masterName} 
+                          onChange={(e) => setMasterName(e.target.value)}
+                          style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', color: 'white', padding: '8px', width: '100%', borderRadius: '4px' }}
+                       />
+                    </div>
+                    <div>
+                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={syncEnabled} onChange={(e) => setSyncEnabled(e.target.checked)} />
+                          <span style={{ fontSize: '0.85rem' }}>Enable Local P2P Mastery Broadcast</span>
+                       </label>
+                    </div>
+                 </div>
+
+                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                    <div className="card">
+                       <h4 style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>LIBRARY SIZE</h4>
+                       <p style={{ fontSize: '1.25rem', fontWeight: 700 }}>{items.length} Papers</p>
+                    </div>
+                    <div className="card">
+                       <h4 style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>COLLECTIONS</h4>
+                       <p style={{ fontSize: '1.25rem', fontWeight: 700 }}>{collections.length} Folders</p>
+                    </div>
+                 </div>
+
+                 <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                    <h4 style={{ fontSize: '0.8rem', color: 'var(--accent-color)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Mastery Credentials</h4>
+                    <p style={{ fontSize: '1rem', marginBottom: '4px', fontWeight: 600 }}>{masterName}</p>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>Registered Master of the Vashira Hub v2.0</p>
+                    
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                       <a href="https://ram0nes.com/" target="_blank" className="social-link">Official Website</a>
+                       <a href="https://vashira.org" target="_blank" className="social-link" style={{ fontWeight: 700 }}>vashira.org</a>
+                       <a href="https://github.com/rafgomindo/vashira" target="_blank" className="social-link">Source</a>
+                    </div>
+                 </div>
 
                 <div style={{ marginTop: '24px', padding: '16px', background: 'linear-gradient(90deg, #a78bfa 0%, #3b82f6 100%)', borderRadius: '12px', color: '#fff' }}>
                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
