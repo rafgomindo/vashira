@@ -17,4 +17,5 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   getPeers: () => ipcRenderer.invoke('get-peers'),
   getDiscoveries: () => ipcRenderer.invoke('get-discoveries'),
   announceMetadata: (doi: string, title: string) => ipcRenderer.invoke('announce-metadata', doi, title),
+  openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
 });

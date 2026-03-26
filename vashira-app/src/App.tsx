@@ -71,6 +71,7 @@ declare global {
       getPeers: () => Promise<string[]>;
       getDiscoveries: () => Promise<PeerDiscovery[]>;
       announceMetadata: (doi: string, title: string) => Promise<void>;
+      openFile: (filePath: string) => Promise<boolean>;
     }
   }
 }
@@ -211,6 +212,12 @@ const App: React.FC = () => {
     alert(`Added to collection!`);
   };
 
+  const handleOpenFile = async (path?: string) => {
+    if (!path) return;
+    const success = await window.vashiraAPI.openFile(path);
+    if (!success) alert("Failed to open file. Mastery requires a valid path.");
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     alert("Copied directly to mastery!");
@@ -335,10 +342,20 @@ const App: React.FC = () => {
                       key={item.id} 
                       className={`card ${selectedItem?.id === item.id ? 'active' : ''}`}
                       onClick={() => setSelectedItem(item)}
+                      onDoubleClick={() => handleOpenFile(item.filePath)}
                       style={{ cursor: 'pointer' }}
                     >
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                        <FileText size={20} color="#a78bfa" />
+                        <FileText 
+                          size={20} 
+                          color={item.filePath ? "#10b981" : "#a78bfa"} 
+                          onClick={(e) => {
+                            if (item.filePath) {
+                               e.stopPropagation();
+                               handleOpenFile(item.filePath);
+                            }
+                          }}
+                        />
                         <div>
                           <h3 style={{ marginBottom: '4px', fontSize: '0.95rem', fontWeight: 600 }}>{item.title}</h3>
                           <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{item.itemType} • {new Date(item.dateAdded).toLocaleDateString()}</p>
@@ -362,6 +379,15 @@ const App: React.FC = () => {
                   <div className="hub-tabs" style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>
                     <button className={`hub-tab ${hubTab === 'excerpts' ? 'active' : ''}`} onClick={() => setHubTab('excerpts')}>Excerpts</button>
                     <button className={`hub-tab ${hubTab === 'citations' ? 'active' : ''}`} onClick={() => setHubTab('citations')}>Cite</button>
+                    {selectedItem.filePath && (
+                      <button 
+                        className="hub-tab" 
+                        onClick={() => handleOpenFile(selectedItem.filePath)}
+                        style={{ marginLeft: 'auto', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 8px', fontSize: '0.7rem' }}
+                      >
+                        Open PDF
+                      </button>
+                    )}
                   </div>
                 </div>
                 

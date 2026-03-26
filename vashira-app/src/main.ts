@@ -113,6 +113,15 @@ app.on('ready', () => {
     }
   });
 
+  ipcMain.handle('open-file', async (_, filePath) => {
+    const { shell } = require('electron');
+    if (filePath && fs.existsSync(filePath)) {
+      await shell.openPath(filePath);
+      return true;
+    }
+    return false;
+  });
+
   createWindow();
 });
 
