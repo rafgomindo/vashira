@@ -4,10 +4,11 @@ import {
   ChevronRight, FileText, Download, Zap, Share2, 
   Tag, Clock, Folder, Globe, Clipboard, Check, Filter,
   Columns, Smartphone, ShieldCheck, PenTool, MessageSquare,
-  Cpu, Terminal, Power, Camera
+  Cpu, Terminal, Power, Camera, LayoutGrid, Network
 } from 'lucide-react';
-import Scribe from './components/Scribe';
-import { askTheOracle, OracleConfig } from './oracle';
+import Scribe from './components/Scribe.js';
+import { askTheOracle, OracleConfig } from './oracle.js';
+import ForceGraph2D from 'react-force-graph-2d';
 
 interface ResearchItem {
   id: number;
@@ -164,7 +165,7 @@ const TopMenuBar = ({ onAction }: { onAction: (action: string) => void }) => {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('library');
+  const [activeTab, setActiveTab] = useState<'library' | 'shared' | 'oracle' | 'scribe' | 'settings' | 'librarian'>('library');
   const [items, setItems] = useState<ResearchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<ResearchItem | null>(null);
@@ -315,10 +316,48 @@ export default function App() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState(['title', 'authors', 'published']);
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
 
   const toggleColumn = (col: string) => {
     setVisibleColumns(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
   }
+
+  const graphData = useMemo(() => {
+    const nodes = filteredItems.map(item => ({
+      id: item.id,
+      name: item.title,
+      val: 5,
+      authors: item.authors,
+      published: item.published
+    }));
+    
+    const links: any[] = [];
+    // Enhanced connectivity: connect items with overlapping authors or common publishers
+    filteredItems.forEach((item, i) => {
+      const itemAuthors = item.authors.split(',').map(a => a.trim().toLowerCase());
+      for (let j = i + 1; j < filteredItems.length; j++) {
+        const nextItem = filteredItems[j];
+        const nextAuthors = nextItem.authors.split(',').map(a => a.trim().toLowerCase());
+        
+        const hasCommonAuthor = itemAuthors.some(a => nextAuthors.includes(a));
+        const samePublisher = item.publisher && nextItem.publisher && item.publisher === nextItem.publisher;
+        const temporalProximity = Math.abs(parseInt(item.published) - parseInt(nextItem.published)) <= 1;
+
+        if (hasCommonAuthor || samePublisher) {
+          links.push({ source: item.id, target: nextItem.id });
+        }
+      }
+    });
+    
+    // Fallback: chain the items if no connections found
+    if (links.length === 0 && filteredItems.length > 1) {
+       filteredItems.forEach((_, idx) => {
+         if (idx > 0) links.push({ source: filteredItems[idx-1].id, target: filteredItems[idx].id });
+       });
+    }
+
+    return { nodes, links };
+  }, [filteredItems]);
 
   const handleMenuAction = async (action: string) => {
     switch (action) {
@@ -439,9 +478,27 @@ export default function App() {
           {activeTab === 'library' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-                 <div>
-                    <h2 style={{ fontSize: '1.8rem', fontWeight: 700 }}>Research Hub</h2>
-                    <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>{filteredItems.length} Items Mastered</p>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                    <div>
+                       <h2 style={{ fontSize: '1.8rem', fontWeight: 700 }}>Research Hub</h2>
+                       <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>{filteredItems.length} Items Mastered</p>
+                    </div>
+                    <div className="view-toggle glass" style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)' }}>
+                       <button 
+                         className={`icon-button small \${viewMode === 'list' ? 'active' : ''}`} 
+                         onClick={() => setViewMode('list')}
+                         style={{ padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '8px', background: viewMode === 'list' ? 'var(--accent-color)' : 'transparent', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }}
+                       >
+                         LIST
+                       </button>
+                       <button 
+                         className={`icon-button small \${viewMode === 'graph' ? 'active' : ''}`} 
+                         onClick={() => setViewMode('graph')}
+                         style={{ padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '8px', background: viewMode === 'graph' ? 'var(--accent-color)' : 'transparent', color: viewMode === 'graph' ? 'white' : 'var(--text-secondary)' }}
+                       >
+                         GRAPH
+                       </button>
+                    </div>
                  </div>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div className="glass-input-wrapper" style={{ width: '300px' }}>
@@ -473,56 +530,117 @@ export default function App() {
                       )}
                     </div>
 
-                    <button className="primary-button" onClick={() => (window as any).vashiraAPI.importPDF().then(loadItems)}>
-                       <Plus size={18} /> <span>Import</span>
-                    </button>
-                 </div>
+                     <button className="primary-button" onClick={() => (window as any).vashiraAPI.importPDF().then(loadItems)}>
+                        <Plus size={18} /> <span>Import</span>
+                     </button>
+                  </div>
               </header>
 
-              <div className="table-container glass" style={{ flex: 1, borderRadius: '24px', overflow: 'auto' }}>
-                 <table className="mastery-table">
-                    <thead>
-                      <tr>
-                        {visibleColumns.includes('title') && <th>Title</th>}
-                        {visibleColumns.includes('authors') && <th>Authors</th>}
-                        {visibleColumns.includes('published') && <th>Year</th>}
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredItems.map(item => (
-                        <tr 
-                          key={item.id} 
-                          className={selectedItem?.id === item.id ? 'selected' : ''}
-                          onClick={() => { setSelectedItem(item); setIsDetailsOpen(true); }}
-                        >
-                          {visibleColumns.includes('title') && <td>{item.title}</td>}
-                          {visibleColumns.includes('authors') && <td style={{ fontSize: '0.85rem', opacity: 0.8 }}>{item.authors}</td>}
-                          {visibleColumns.includes('published') && <td>{item.published}</td>}
-                          <td style={{ textAlign: 'right' }}>
-                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                               {item.filePath && (
-                                 <button className="icon-button small" title="Open Local PDF" onClick={(e) => { e.stopPropagation(); (window as any).vashiraAPI.openFile(item.filePath); }}>
-                                   <FileText size={14} />
-                                 </button>
-                               )}
-                               {item.snapshotPath && (
-                                 <button className="icon-button small" title="View Sovereign Archive" onClick={(e) => { e.stopPropagation(); setSnapshotPath(item.snapshotPath!); setShowSnapshotReader(true); }}>
-                                   <ShieldCheck size={14} />
-                                 </button>
-                               )}
-                             </div>
-                          </td>
+               <div key={viewMode} className="view-enter" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                 {viewMode === 'list' ? (
+                <div className="table-container glass" style={{ flex: 1, borderRadius: '24px', overflow: 'auto' }}>
+                   <table className="mastery-table">
+                      <thead>
+                        <tr>
+                          {visibleColumns.includes('title') && <th>Title</th>}
+                          {visibleColumns.includes('authors') && <th>Authors</th>}
+                          {visibleColumns.includes('published') && <th>Year</th>}
+                          <th></th>
                         </tr>
-                      ))}
-                    </tbody>
-                 </table>
-              </div>
-            </div>
+                      </thead>
+                      <tbody>
+                        {filteredItems.map(item => (
+                          <tr 
+                            key={item.id} 
+                            className={selectedItem?.id === item.id ? 'selected' : ''}
+                            onClick={() => { setSelectedItem(item); setIsDetailsOpen(true); }}
+                          >
+                            {visibleColumns.includes('title') && (
+                              <td>
+                                {item.title}
+                                {item.doi && items.some(i => i.id !== item.id && i.doi === item.doi) && (
+                                  <span style={{ marginLeft: '12px', padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', fontSize: '0.65rem', fontWeight: 800 }}>DUPE</span>
+                                )}
+                              </td>
+                            )}
+                            {visibleColumns.includes('authors') && <td style={{ fontSize: '0.85rem', opacity: 0.8 }}>{item.authors}</td>}
+                            {visibleColumns.includes('published') && <td>{item.published}</td>}
+                            <td style={{ textAlign: 'right' }}>
+                               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                 {item.filePath && (
+                                   <button className="icon-button small" title="Open Local PDF" onClick={(e) => { e.stopPropagation(); (window as any).vashiraAPI.openFile(item.filePath); }}>
+                                     <FileText size={14} />
+                                   </button>
+                                 )}
+                                 {item.snapshotPath && (
+                                   <button className="icon-button small" title="View Sovereign Archive" onClick={(e) => { e.stopPropagation(); setSnapshotPath(item.snapshotPath!); setShowSnapshotReader(true); }}>
+                                     <ShieldCheck size={14} />
+                                   </button>
+                                 )}
+                               </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                   </table>
+                </div>
+              ) : (
+                <div className="graph-container glass" style={{ flex: 1, borderRadius: '24px', overflow: 'hidden', background: 'rgba(0,0,0,0.4)', position: 'relative' }}>
+                   <ForceGraph2D
+                     graphData={graphData}
+                     nodeLabel="name"
+                     nodeColor={() => '#a78bfa'}
+                     linkColor={() => 'rgba(255,255,255,0.1)'}
+                     backgroundColor="rgba(0,0,0,0)"
+                     width={800}
+                     height={600}
+                     onNodeClick={(node: any) => {
+                        const item = items.find(i => i.id === node.id);
+                        if (item) { setSelectedItem(item); setIsDetailsOpen(true); }
+                     }}
+                   />
+                 </div>
+               )}
+             </div>
+           </div>
           )}
 
           {activeTab === 'scribe' && (
-            <Scribe hubItems={items} onShowToast={(m) => showToast(m)} />
+            <Scribe hubItems={items} onShowToast={(m: string) => showToast(m)} />
+          )}
+
+          {activeTab === 'librarian' && (
+            <div className="fade-in" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+               <header>
+                  <h2 style={{ fontSize: '1.8rem', fontWeight: 700 }}>The Librarian</h2>
+                  <p style={{ color: 'var(--text-secondary)' }}>Master your PDFs with in-app annotations and sovereign metadata extraction.</p>
+               </header>
+               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px', flex: 1, overflowY: 'auto', paddingRight: '12px' }}>
+                  {items.filter(i => i.filePath).map(item => (
+                    <div key={item.id} className="glass" style={{ padding: '24px', borderRadius: '24px', display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative' }}>
+                       <div style={{ position: 'absolute', top: '24px', right: '24px' }}>
+                          <FileText size={20} opacity={0.3} />
+                       </div>
+                       <h4 style={{ fontSize: '1.1rem', fontWeight: 600, paddingRight: '40px' }}>{item.title}</h4>
+                       <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>{item.authors || 'Unknown Source'}</p>
+                       <div style={{ marginTop: 'auto', display: 'flex', gap: '12px' }}>
+                          <button className="primary-button small" style={{ flex: 1 }} onClick={() => { setSelectedItem(item); setPdfPath(item.filePath!); setShowPdfReader(true); }}>
+                             <PenTool size={14} /> <span>ANNOTATE</span>
+                          </button>
+                          <button className="icon-button glass small" title="Extract Deep Metadata" onClick={() => (window as any).vashiraAPI.gatherMetadata(item.filePath).then(loadItems)}>
+                             <Zap size={14} />
+                          </button>
+                       </div>
+                    </div>
+                  ))}
+                  {items.filter(i => i.filePath).length === 0 && (
+                    <div style={{ gridColumn: '1 / -1', textAlign: 'center', marginTop: '100px', opacity: 0.3 }}>
+                       <Database size={48} style={{ marginBottom: '16px' }} />
+                       <p>Import PDFs to activate the Librarian's tools.</p>
+                    </div>
+                  )}
+               </div>
+            </div>
           )}
 
           {activeTab === 'oracle' && (

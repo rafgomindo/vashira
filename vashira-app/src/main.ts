@@ -3,12 +3,12 @@ import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
 import started from 'electron-squirrel-startup';
-import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath, updateItem, getAnnotations, addAnnotation } from './database';
-import { StyleStore } from './styles';
-import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISBNFromText } from './gatherer';
-import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser';
-import { discoveryEngine } from './discovery';
-import { captureSnapshot } from './archiver';
+import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath, updateItem, getAnnotations, addAnnotation } from './database.js';
+import { StyleStore } from './styles.js';
+import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISBNFromText } from './gatherer.js';
+import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser.js';
+import { discoveryEngine } from './discovery.js';
+import { captureSnapshot } from './archiver.js';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -352,7 +352,7 @@ app.on('ready', () => {
     }
   });
 
-  discoveryEngine.on('metadata-request', async ({ doi, peer }) => {
+  discoveryEngine.on('discovery', async ({ doi, peer }: { doi: string; peer: any }) => {
     const allItems = await getItems();
     const item = allItems.find((i: any) => i.doi === doi || i.fileHash === doi);
     if (item) {
@@ -435,6 +435,85 @@ app.on('ready', () => {
       } catch (e) {
         res.writeHead(500); res.end('Hub Error');
       }
+    } else if (req.url === '/mobile') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Vashira Sovereign Bridge</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                <style>
+                    :root { --accent: #a78bfa; --bg: #0d0d12; --glass: rgba(255,255,255,0.05); }
+                    body { background: var(--bg); color: white; font-family: -apple-system, system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 24px; box-sizing: border-box; }
+                    .glass { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 32px; padding: 40px; text-align: center; width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+                    h1 { font-size: 1.5rem; margin-bottom: 8px; letter-spacing: -0.02em; }
+                    p { font-size: 0.9rem; opacity: 0.6; line-height: 1.5; margin-bottom: 32px; }
+                    .btn { background: var(--accent); color: black; border: none; padding: 20px; border-radius: 16px; font-weight: 700; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+                    .btn:active { transform: scale(0.95); }
+                    #status { margin-top: 24px; font-size: 0.8rem; height: 1.2rem; }
+                    .loader { border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid var(--accent); border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; display: none; margin: 0 auto; }
+                    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                </style>
+            </head>
+            <body>
+                <div class="glass">
+                    <div style="background: var(--accent); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                    </div>
+                    <h1>Mobile Bridge</h1>
+                    <p>Scan a DOI or ISBN barcode to sync this device with your Sovereign Research Hub.</p>
+                    <button id="scan" class="btn">CAPTURE METADATA</button>
+                    <div id="status">Ready for Synchronicity.</div>
+                    <div id="loader" class="loader"></div>
+                </div>
+                <script>
+                    const btn = document.getElementById('scan');
+                    const status = document.getElementById('status');
+                    const loader = document.getElementById('loader');
+                    
+                    btn.onclick = async () => {
+                        try {
+                            const id = prompt("Manual Capture: Paste DOI/ISBN detected or use system camera.");
+                            if (id) {
+                                status.innerText = "Propagating Metadata...";
+                                loader.style.display = 'block';
+                                const res = await fetch('/ingest', { 
+                                    method: 'POST', 
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ identifier: id }) 
+                                });
+                                status.innerText = "Mastered in Vault.";
+                                loader.style.display = 'none';
+                            }
+                        } catch (e) {
+                            status.innerText = e.message;
+                            loader.style.display = 'none';
+                        }
+                    }
+                </script>
+            </body>
+            </html>
+        `);
+    } else if (req.url === '/ingest' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const { identifier } = JSON.parse(body);
+                const { translatorService } = require('./translator-service');
+                const metadata = await translatorService.translate(identifier);
+                if (metadata) {
+                    const itemId = await addItem(metadata);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('snatched-item', metadata);
+                    }
+                    res.writeHead(200); res.end('Mastered');
+                } else {
+                    res.writeHead(404); res.end('Not Found');
+                }
+            } catch (e) { res.writeHead(500); res.end('Vault Failure'); }
+        });
     } else if (req.method === 'GET' && req.url?.startsWith('/download/')) {
         const itemId = parseInt(req.url.split('/')[2]);
         const item = (await getItems()).find((i: any) => i.id === itemId);
@@ -451,7 +530,7 @@ app.on('ready', () => {
       res.writeHead(404); res.end();
     }
   });
-  snatcher.listen(51235, () => console.log('[Snatcher] Ready on port 51235'));
+  snatcher.listen(51235, '0.0.0.0', () => console.log('[Snatcher] Ready on port 51235 (Global Access)'));
 });
 
 // Quit when all windows are closed, except on macOS.
