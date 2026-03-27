@@ -30,9 +30,14 @@ class PeerDiscovery extends EventEmitter {
           this.peers.add(`MasterNode@\${rinfo.address}`);
         } else if (data.type === 'MASTERY_ANNOUNCE') {
           console.log(`[P2P] Insight from \${rinfo.address}: \${data.title}`);
+          const identifier = data.doi;
+          if (identifier) {
+             require('./database').upsertConsensus(identifier, { title: data.title, authors: 'Unknown', published: 'N/A' });
+          }
           const newDiscovery = { 
             doi: data.doi, 
             title: data.title, 
+            itemId: data.itemId,
             peer: rinfo.address,
             timestamp: new Date().toISOString()
           };
@@ -63,12 +68,13 @@ class PeerDiscovery extends EventEmitter {
   public getOnlinePeers() { return Array.from(this.peers); }
   public getLocalDiscoveries() { return this.discoveries; }
 
-  public announceMetadata(doi: string, title: string) {
+  public announceMetadata(doi: string, title: string, itemId: number) {
     const message = JSON.stringify({
       type: 'MASTERY_ANNOUNCE',
       nodeId: this.nodeId,
       doi,
-      title
+      title,
+      itemId
     });
     this.socket.send(message, 0, message.length, this.PORT, this.BROADCAST_ADDR);
   }

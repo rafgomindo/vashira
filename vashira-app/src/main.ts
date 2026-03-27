@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
 import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath, updateItem } from './database';
 import { StyleStore } from './styles';
-import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText } from './gatherer';
+import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISBNFromText } from './gatherer';
 import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser';
 import { discoveryEngine } from './discovery';
 import http from 'node:http';
@@ -54,6 +54,7 @@ app.on('ready', () => {
   ipcMain.handle('get-notes', (_, itemId) => getNotes(itemId));
   ipcMain.handle('add-note', (_, itemId, content) => addNote(itemId, content));
   ipcMain.handle('fetch-metadata', (_, doi) => fetchMetadataFromDOI(doi));
+  ipcMain.handle('update-item', (_, id, fields) => updateItem(id, fields));
   
   ipcMain.handle('generate-citation', async (_, itemId, styleName = 'apa') => {
     const { getItemById } = require('./database');
@@ -114,15 +115,26 @@ app.on('ready', () => {
       await handle.close();
 
       const text = buffer.toString('utf8');
+      
+      // [VASHIRA 5.0] Content Fingerprinting
+      const crypto = require('node:crypto');
+      const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+
       const doi = extractDOIFromText(text);
+      const isbn = extractISBNFromText(text);
 
       let metadata: any = null;
       if (doi) {
         try {
           metadata = await fetchMetadataFromDOI(doi);
         } catch (e) {
-          console.warn('DOI fetch failed, falling back to heuristics.');
+          console.warn('DOI fetch failed, checking ISBN or heuristics.');
         }
+      }
+
+      if (!metadata && isbn) {
+        const { translatorService } = require('./translator-service');
+        metadata = await translatorService.translate(isbn);
       }
       
       if (!metadata) {
@@ -137,15 +149,22 @@ app.on('ready', () => {
         };
       }
 
-      const indexedItem = { ...metadata, filePath: destPath };
+      const indexedItem = { ...metadata, filePath: destPath, fileHash };
+      const itemId = await addItem(indexedItem);
+      
+      // [VASHIRA 4.0] Trigger P2P Mastery Announcement
+      if (indexedItem.doi || indexedItem.fileHash) {
+        discoveryEngine.announceMetadata(indexedItem.doi || indexedItem.fileHash, indexedItem.title, itemId as number);
+      }
+
       // [VASHIRA 4.0] Trigger Deep Indexing
       if (destPath) {
         setTimeout(async () => {
           const { indexItemTask } = require('./indexer');
-          await indexItemTask(indexedItem);
+          await indexItemTask({ ...indexedItem, id: itemId });
         }, 100);
       }
-      return indexedItem;
+      return { ...indexedItem, id: itemId };
     } catch (error: any) {
       console.error('PDF Import error:', error);
       throw new Error(`Mastery interrupted: ${error.message}`);
@@ -159,7 +178,14 @@ app.on('ready', () => {
     });
     if (canceled || filePaths.length === 0) return null;
     const content = fs.readFileSync(filePaths[0], 'utf8');
-    return parseBibTeX(content);
+    const items = parseBibTeX(content);
+    
+    const results = [];
+    for (const item of items) {
+       const itemId = await addItem(item);
+       results.push({ ...item, id: itemId });
+    }
+    return results;
   });
 
   ipcMain.handle('import-ris', async () => {
@@ -188,6 +214,42 @@ app.on('ready', () => {
   ipcMain.handle('search-global', (_, query) => require('./discovery_api').searchOpenAlex(query));
   
   ipcMain.handle('get-items-by-category', (_, category) => require('./database').getItemsByCategory(category));
+
+  ipcMain.handle('import-metadata', async (_, identifiers: string) => {
+    // [VASHIRA 6.0] Split by , | or whitespace
+    const ids = identifiers.split(/[ ,|]+/).filter(id => id.trim().length > 0);
+    const { translatorService } = require('./translator-service');
+    
+    const results = [];
+    for (const id of ids) {
+       try {
+         const metadata = await translatorService.translate(id.trim());
+         if (metadata) {
+           const itemId = await addItem(metadata);
+           results.push({ ...metadata, id: itemId });
+           
+           if (metadata.doi) {
+              discoveryEngine.announceMetadata(metadata.doi, metadata.title, itemId as number);
+           }
+         }
+       } catch (e) {
+         console.error(`[Batch Import] Failed for \${id}:`, e);
+       }
+    }
+    return results;
+  });
+
+  ipcMain.handle('magic-categorize', async () => {
+    const { getItems, updateItem } = require('./database');
+    const { categorizeItems } = require('./parser');
+    const items = getItems();
+    const categorizations = categorizeItems(items);
+    
+    for (const { itemId, category } of categorizations) {
+      updateItem(itemId, { extra: category }); // Store in extra for now
+    }
+    return true;
+  });
 
   ipcMain.handle('export-bibtex', async (_, items) => {
     const bib = generateBibTeX(items);
@@ -218,9 +280,18 @@ app.on('ready', () => {
   });
 
   // P2P Mastery Exchange
+  discoveryEngine.on('metadata-response', (metadata: any) => {
+    if (metadata) {
+      const identifier = metadata.doi || metadata.fileHash;
+      if (identifier) {
+        require('./database').upsertConsensus(identifier, metadata);
+      }
+    }
+  });
+
   discoveryEngine.on('metadata-request', async ({ doi, peer }) => {
     const allItems = await getItems();
-    const item = allItems.find((i: any) => i.doi === doi);
+    const item = allItems.find((i: any) => i.doi === doi || i.fileHash === doi);
     if (item) {
       discoveryEngine.sendMetadata(item, peer);
     }
@@ -234,7 +305,7 @@ app.on('ready', () => {
       }, 5000);
 
       const handleResponse = (metadata: any) => {
-        if (metadata && metadata.doi === doi) {
+        if (metadata && (metadata.doi === doi || metadata.fileHash === doi)) {
           clearTimeout(timeout);
           discoveryEngine.off('metadata-response', handleResponse);
           resolve(metadata);
@@ -245,6 +316,8 @@ app.on('ready', () => {
       discoveryEngine.requestMetadata(doi, peerIp);
     });
   });
+
+  ipcMain.handle('get-consensus', (_, identifier) => require('./database').getConsensus(identifier));
 
   createWindow();
 
@@ -271,6 +344,10 @@ app.on('ready', () => {
             mainWindow.webContents.send('snatched-item', item);
           }
 
+          if (item.doi) {
+            discoveryEngine.announceMetadata(item.doi, item.title, itemId as number);
+          }
+
           // ASYNC ARCHIVING
           if (item.url) {
             setTimeout(async () => {
@@ -295,6 +372,18 @@ app.on('ready', () => {
       } catch (e) {
         res.writeHead(500); res.end('Hub Error');
       }
+    } else if (req.method === 'GET' && req.url?.startsWith('/download/')) {
+        const itemId = parseInt(req.url.split('/')[2]);
+        const item = (await getItems()).find((i: any) => i.id === itemId);
+        if (item && item.filePath && fs.existsSync(item.filePath)) {
+            res.writeHead(200, { 
+                'Content-Type': 'application/pdf',
+                'Content-Disposition': `attachment; filename="\${path.basename(item.filePath)}"` 
+            });
+            fs.createReadStream(item.filePath).pipe(res);
+        } else {
+            res.writeHead(404); res.end('File not found in Mastery Hub');
+        }
     } else {
       res.writeHead(404); res.end();
     }

@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   searchDeep: (query: string) => ipcRenderer.invoke('search-deep', query),
   getAllTags: () => ipcRenderer.invoke('get-all-tags'),
   searchGlobal: (query: string) => ipcRenderer.invoke('search-global', query),
+  updateItem: (id: number, fields: any) => ipcRenderer.invoke('update-item', id, fields),
   
   // Vashira 5.0: Web-Snatcher Listener
   onSnatchedItem: (callback: (item: any) => void) => {

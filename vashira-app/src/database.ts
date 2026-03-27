@@ -115,6 +115,15 @@ export function initDatabase() {
       fullText TEXT,
       FOREIGN KEY(itemId) REFERENCES items(id)
     );
+    CREATE TABLE IF NOT EXISTS consensus_registry (
+      identifier TEXT,
+      title TEXT,
+      authors TEXT,
+      published TEXT,
+      votes INTEGER DEFAULT 1,
+      lastSeen DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(identifier, title, authors)
+    );
   `);
 
   // [VASHIRA 4.0] Sovereign Schema Guard: Proactive Migration
@@ -130,7 +139,10 @@ export function initDatabase() {
     { name: 'filePath', type: 'TEXT' },
     { name: 'extra', type: 'TEXT' },
     { name: 'tags', type: 'TEXT' },
-    { name: 'snapshotPath', type: 'TEXT' }
+    { name: 'snapshotPath', type: 'TEXT' },
+    { name: 'fileHash', type: 'TEXT' },
+    { name: 'publisher', type: 'TEXT' },
+    { name: 'pages', type: 'INTEGER' }
   ];
 
   requiredColumns.forEach(col => {
@@ -233,8 +245,8 @@ function logSync(action: string, targetTable: string, targetId: number, data: an
 
 export function addItem(item: any) {
   const info = db.prepare(`
-    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath, snapshotPath, extra) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath, snapshotPath, fileHash, publisher, pages, extra) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     item.title, 
     item.itemType, 
@@ -245,6 +257,9 @@ export function addItem(item: any) {
     item.url || '', 
     item.filePath || '',
     item.snapshotPath || '',
+    item.fileHash || '',
+    item.publisher || '',
+    item.pages || 0,
     item.extra || ''
   );
   
@@ -337,10 +352,32 @@ export function getItemsByTag(tagId: number) {
     ORDER BY items.dateAdded DESC
   `).all(tagId);
 }
+export function upsertConsensus(identifier: string, metadata: any) {
+    return db.prepare(`
+      INSERT INTO consensus_registry (identifier, title, authors, published, votes)
+      VALUES (?, ?, ?, ?, 1)
+      ON CONFLICT(identifier, title, authors) DO UPDATE SET 
+        votes = votes + 1,
+        lastSeen = CURRENT_TIMESTAMP
+    `).run(identifier, metadata.title, metadata.authors, metadata.published);
+}
+
+export function getConsensus(identifier: string) {
+    return db.prepare(`
+        SELECT * FROM consensus_registry 
+        WHERE identifier = ? 
+        ORDER BY votes DESC 
+        LIMIT 3
+    `).all(identifier);
+}
 
 export function updateItem(id: number, fields: any) {
-  const keys = Object.keys(fields);
-  const assignments = keys.map(k => `\${k} = ?`).join(', ');
-  const values = keys.map(k => fields[k]);
-  return db.prepare(`UPDATE items SET \${assignments} WHERE id = ?`).run(...values, id);
+  // Omit ID and other non-updatable fields
+  const { id: _, dateAdded: __, ...updatableFields } = fields;
+  const keys = Object.keys(updatableFields);
+  if (keys.length === 0) return null;
+  
+  const assignments = keys.map(k => `${k} = ?`).join(', ');
+  const values = keys.map(k => updatableFields[k]);
+  return db.prepare(`UPDATE items SET ${assignments} WHERE id = ?`).run(...values, id);
 }
