@@ -328,11 +328,6 @@ app.on('ready', () => {
     return false;
   });
 
-  ipcMain.handle('magic-categorize', async () => {
-    const items = await getItems();
-    return categorizeItems(items);
-  });
-
   ipcMain.handle('open-file', async (_, filePath) => {
     const { shell } = require('electron');
     if (filePath && fs.existsSync(filePath)) {
