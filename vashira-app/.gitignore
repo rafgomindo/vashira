@@ -90,3 +90,11 @@ typings/
 
 # Electron-Forge
 out/
+
+# Vashira Sentinel & Extensions
+sentinel/
+extensions/
+office/
+*.zip
+*.exe
+*.msi
