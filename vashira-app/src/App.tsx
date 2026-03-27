@@ -236,6 +236,57 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const initDatabase = async () => {
+    await (window as any).vashiraAPI.initDatabase();
+  };
+
+  const loadNotes = async (itemId: number) => {
+    const data = await (window as any).vashiraAPI.getNotes(itemId);
+    // console.log('Notes loaded', data);
+  };
+
+  const loadStyles = async () => {
+    // Styling is handled by global CSS but state could go here
+  };
+
+  const [annotations, setAnnotations] = useState<any[]>([]);
+  const [activeAnnotationType, setActiveAnnotationType] = useState<'highlight' | 'sticky'>('sticky');
+
+  const loadAnnotations = async (itemId: number) => {
+    const data = await (window as any).vashiraAPI.getAnnotations(itemId);
+    setAnnotations(data);
+  };
+
+  const saveAnnotation = async (content: string, position: string) => {
+    if (!selectedItem) return;
+    await (window as any).vashiraAPI.addAnnotation(selectedItem.id, activeAnnotationType, content, position, '#a78bfa');
+    loadAnnotations(selectedItem.id);
+    showToast('Insight Mastered.');
+  };
+
+  const handleIngested = (item: any) => {
+    setItems(prev => [item, ...prev]);
+    showToast(`Sentinel captured: ${item.title}`);
+  };
+
+  useEffect(() => {
+    initDatabase();
+    loadItems();
+    loadStyles();
+    
+    const unlisten = (window as any).vashiraAPI.onItemIngested(handleIngested);
+    return () => unlisten();
+  }, []);
+
+  const [dupes, setDupes] = useState<any[]>([]);
+  useEffect(() => {
+    if (selectedItem) {
+      loadNotes(selectedItem.id);
+      loadAnnotations(selectedItem.id);
+      (window as any).vashiraAPI.checkDuplicates(selectedItem.title).then(setDupes);
+    }
+  }, [selectedItem]);
+
   const handleOracleAsk = async () => {
     if (!oracleQuery) return;
     setIsOracleLoading(true);
@@ -320,6 +371,14 @@ export default function App() {
 
           <div className={`nav-item ${activeTab === 'shared' ? 'active' : ''}`} onClick={() => setActiveTab('shared')}>
             <Globe /> <span>P2P Discovery</span>
+          </div>
+
+          <p style={{ fontSize: '0.7rem', color: 'var(--accent-color)', marginBottom: '12px', paddingLeft: '12px', marginTop: '24px' }}>SMART FLOWS</p>
+          <div className="nav-item" onClick={() => { setActiveTab('library'); setSearchTerm('2026'); }}>
+             <Activity size={18} /> <span>Recent (2026)</span>
+          </div>
+          <div className="nav-item" onClick={() => { setActiveTab('library'); setSearchTerm('DOI:'); }}>
+             <Globe size={18} /> <span>With DOIs</span>
           </div>
 
           <div style={{ height: '32px' }}></div>
@@ -533,6 +592,12 @@ export default function App() {
                     value={selectedItem.title} 
                     onChange={e => setSelectedItem({...selectedItem, title: e.target.value})}
                   />
+                  {dupes.length > 1 && (
+                    <div style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                       <ShieldCheck size={14} color="#ef4444" />
+                       <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>Potential Duplicate Detected</span>
+                    </div>
+                  )}
                   <ConsensusAdvisory identifier={selectedItem.doi || selectedItem.fileHash} onApply={(m) => setSelectedItem({...selectedItem, ...m})} />
                </section>
                <section>
@@ -556,12 +621,31 @@ export default function App() {
                  </section>
                )}
                <section>
+                  <label style={{ fontSize: '0.7rem', opacity: 0.6, marginBottom: '8px', display: 'block' }}>Semantic Labels</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                     {['Must Read', 'Core Source', 'Verification Needed', 'Peer Agreed'].map(tag => (
+                       <div key={tag} className="glass" style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '0.7rem', background: tag === 'Must Read' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(167, 139, 250, 0.1)', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.05)' }}>
+                          {tag}
+                       </div>
+                     ))}
+                     <div className="glass" style={{ padding: '4px 8px', borderRadius: '50%', fontSize: '0.8rem', opacity: 0.5, cursor: 'pointer' }}>+</div>
+                  </div>
+               </section>
+               <section>
                   <label style={{ fontSize: '0.7rem', opacity: 0.6, marginBottom: '8px', display: 'block' }}>Abstract</label>
                   <p style={{ fontSize: '0.85rem', lineHeight: 1.6, opacity: 0.8 }}>{selectedItem.abstract}</p>
                </section>
             </div>
-            <footer style={{ padding: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '12px' }}>
-               <button className="primary-button small" style={{ flex: 1 }} onClick={() => (window as any).vashiraAPI.updateItem(selectedItem.id, selectedItem)}>SAVE CHANGES</button>
+            <footer style={{ padding: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '12px', flexDirection: 'column' }}>
+               <button className="primary-button small" style={{ width: '100%' }} onClick={() => (window as any).vashiraAPI.updateItem(selectedItem.id, selectedItem)}>SAVE CHANGES</button>
+               <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="icon-button glass small" style={{ flex: 1 }} title="Copy for Word" onClick={() => (window as any).vashiraAPI.generateCitation(selectedItem.id, 'apa').then((c: string) => { navigator.clipboard.writeText(c); showToast('Citation copied for Word.'); })}>
+                    <PenTool size={14} /> <span style={{ fontSize: '0.7rem' }}>CITE (WORD)</span>
+                  </button>
+                  <button className="icon-button glass small" style={{ flex: 1 }} title="Merge Duplicates" onClick={() => showToast('Merging logic coming in Mastery 9.0.')}>
+                    <Plus size={14} /> <span style={{ fontSize: '0.7rem' }}>MERGE</span>
+                  </button>
+               </div>
             </footer>
           </aside>
         )}
@@ -569,15 +653,47 @@ export default function App() {
 
       {/* Reader Overlay */}
       {showPdfReader && (
-        <div className="reader-overlay fade-in">
-           <header className="glass-nav" style={{ height: '60px', display: 'flex', alignItems: 'center', padding: '0 24px', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <FileText color="var(--accent-color)" />
-                <span style={{ fontWeight: 600 }}>{selectedItem?.title}</span>
+        <div className="reader-overlay fade-in" style={{ display: 'flex', flexDirection: 'row' }}>
+           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+             <header className="glass-nav" style={{ height: '60px', display: 'flex', alignItems: 'center', padding: '0 24px', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <FileText color="var(--accent-color)" />
+                  <span style={{ fontWeight: 600, maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedItem?.title}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                   <button className={`icon-button glass \${activeAnnotationType === 'highlight' ? 'active' : ''}`} onClick={() => setActiveAnnotationType('highlight')} title="Highlight Mode"><Zap size={18} /></button>
+                   <button className={`icon-button glass \${activeAnnotationType === 'sticky' ? 'active' : ''}`} onClick={() => setActiveAnnotationType('sticky')} title="Sticky Note"><PenTool size={18} /></button>
+                   <button className="icon-button" onClick={() => setShowPdfReader(false)}><ChevronRight /></button>
+                </div>
+             </header>
+             <iframe src={`file://\${pdfPath}`} style={{ width: '100%', height: 'calc(100% - 60px)', border: 'none' }} title="Mastery Reader" />
+           </div>
+           
+           <aside className="pdf-sidebar glass-nav" style={{ width: '350px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <h3 style={{ fontSize: '0.9rem', opacity: 0.6, letterSpacing: '0.1em' }}>DEEP INSIGHTS</h3>
+              <div className="notes-list" style={{ flex: 1, overflowY: 'auto' }}>
+                 {annotations.map(ann => (
+                   <div key={ann.id} className="glass" style={{ padding: '16px', borderRadius: '12px', borderLeft: `4px solid \${ann.color}`, marginBottom: '12px' }}>
+                      <p style={{ fontSize: '0.85rem', marginBottom: '8px' }}>{ann.content}</p>
+                      <span style={{ fontSize: '0.65rem', opacity: 0.4 }}>{new Date(ann.timestamp).toLocaleString()}</span>
+                   </div>
+                 ))}
+                 {annotations.length === 0 && <p style={{ opacity: 0.3, textAlign: 'center', marginTop: '40px' }}>No insights pinned yet.</p>}
               </div>
-              <button className="icon-button" onClick={() => setShowPdfReader(false)}><ChevronRight /></button>
-           </header>
-           <iframe src={`file://\${pdfPath}`} style={{ width: '100%', height: 'calc(100% - 60px)', border: 'none' }} title="Mastery Reader" />
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                 <textarea 
+                   placeholder="Type an insight to pin it..." 
+                   onKeyDown={e => {
+                     if (e.key === 'Enter' && !e.shiftKey) {
+                       e.preventDefault();
+                       saveAnnotation((e.target as HTMLTextAreaElement).value, "page-current");
+                       (e.target as HTMLTextAreaElement).value = '';
+                     }
+                   }}
+                 />
+                 <p style={{ fontSize: '0.65rem', opacity: 0.4 }}>Press Enter to Pin to Sovereign Record.</p>
+              </div>
+           </aside>
         </div>
       )}
 

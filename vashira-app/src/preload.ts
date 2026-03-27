@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   searchDeep: (query: string) => ipcRenderer.invoke('search-deep', query),
   getAllTags: () => ipcRenderer.invoke('get-all-tags'),
   searchGlobal: (query: string) => ipcRenderer.invoke('search-global', query),
+  getAnnotations: (itemId: number) => ipcRenderer.invoke('get-annotations', itemId),
+  addAnnotation: (itemId: number, type: string, content: string, position: string, color: string) => ipcRenderer.invoke('add-annotation', itemId, type, content, position, color),
+  onItemIngested: (callback: any) => {
+    const listener = (_: any, item: any) => callback(item);
+    ipcRenderer.on('item-ingested', listener);
+    return () => ipcRenderer.removeListener('item-ingested', listener);
+  },
   updateItem: (id: number, fields: any) => ipcRenderer.invoke('update-item', id, fields),
   
   // Vashira 5.0: Web-Snatcher Listener

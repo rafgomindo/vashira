@@ -1,13 +1,13 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import http from 'node:http';
 import started from 'electron-squirrel-startup';
-import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath, updateItem } from './database';
+import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath, updateItem, getAnnotations, addAnnotation } from './database';
 import { StyleStore } from './styles';
 import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISBNFromText } from './gatherer';
 import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser';
 import { discoveryEngine } from './discovery';
-import http from 'node:http';
 import { captureSnapshot } from './archiver';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -22,6 +22,7 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: path.join(__dirname, '../assets/icon.png'),
     titleBarStyle: 'hidden', // Modern titlebar
     backgroundColor: '#0d0d12',
     webPreferences: {
@@ -56,6 +57,68 @@ app.on('ready', () => {
   ipcMain.handle('fetch-metadata', (_, doi) => fetchMetadataFromDOI(doi));
   ipcMain.handle('update-item', (_, id, fields) => updateItem(id, fields));
   
+  // Vashira Sentinel: Local Ingest Server (Port 51239)
+  const ingestServer = http.createServer((req, res) => {
+    // CORS for Extension
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') { res.end(); return; }
+
+    if (req.method === 'POST' && req.url === '/ingest') {
+      let body = '';
+      req.on('data', chunk => body += chunk.toString());
+      req.on('end', async () => {
+        try {
+          const data = JSON.parse(body);
+          const { fetchMetadataFromDOI } = require('./gatherer');
+          
+          let itemMetadata;
+          if (data.doi) {
+            itemMetadata = await fetchMetadataFromDOI(data.doi);
+          } else {
+            itemMetadata = data; // Directly from scraper
+          }
+
+          if (itemMetadata) {
+             const itemId = await addItem(itemMetadata);
+             // Broadcast to UI
+             if (mainWindow) mainWindow.webContents.send('item-ingested', { ...itemMetadata, id: itemId });
+             res.writeHead(200, { 'Content-Type': 'application/json' });
+             res.end(JSON.stringify({ success: true, itemId }));
+          } else {
+             res.writeHead(400); res.end('Invalid Metadata');
+          }
+        } catch (e) {
+          res.writeHead(500); res.end('Ingest Failed');
+        }
+      });
+    } else {
+      res.writeHead(404); res.end();
+    }
+  });
+
+  ingestServer.listen(51239, '127.0.0.1', () => {
+    console.log('Vashira Sentinel Ingest Server live on port 51239');
+  });
+
+  ipcMain.handle('check-duplicates', async (_, title) => {
+    const { getItems } = require('./database');
+    const items = getItems();
+    // Basic fuzzy match: common words removal + lowercase
+    const clean = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(' ').filter(w => w.length > 3).join(' ');
+    const target = clean(title);
+    
+    return items.filter((item: any) => {
+      const current = clean(item.title);
+      return current === target || (target.length > 10 && current.includes(target));
+    });
+  });
+
+  ipcMain.handle('get-annotations', (_, itemId) => getAnnotations(itemId));
+  ipcMain.handle('add-annotation', (_, itemId, type, content, position, color) => addAnnotation(itemId, type, content, position, color));
+
   ipcMain.handle('generate-citation', async (_, itemId, styleName = 'apa') => {
     const { getItemById } = require('./database');
     const { CitationEngine } = require('./citation');

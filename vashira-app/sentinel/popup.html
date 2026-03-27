@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body class="glass">
+  <div class="header">
+    <div class="logo">
+      <img src="icons/icon128.png" width="24" height="24">
+      <span>SENTINEL</span>
+    </div>
+    <div class="status-pulse"></div>
+  </div>
+
+  <div class="content">
+    <div id="loading" class="fade-in">Seeking metadata...</div>
+    <div id="scanned-info" class="hidden fade-in">
+      <h3 id="item-title">Research Title</h3>
+      <p id="item-authors">Authors...</p>
+      <div class="id-badge" id="item-doi">DOI: ---</div>
+      <button id="ingest-btn" class="primary-button">MASTER TO HUB</button>
+    </div>
+    <div id="success" class="hidden fade-in">
+      <div class="check-circle">✓</div>
+      <p>Knowledge Mastered.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span id="host-status">Sovereign Node: OFFLINE</span>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

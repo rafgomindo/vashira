@@ -81,10 +81,13 @@ export function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      itemId INTEGER,
-      content TEXT NOT NULL,
-      dateAdded DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(itemId) REFERENCES items(id)
+      itemId INTEGER, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS annotations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      itemId INTEGER, type TEXT, content TEXT, 
+      position TEXT, color TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS tags (
@@ -267,6 +270,15 @@ export function addItem(item: any) {
   logSync('CREATE', 'items', itemId as number, item);
   return itemId;
 }
+
+export const getAnnotations = (itemId: number) => {
+  return db.prepare('SELECT * FROM annotations WHERE itemId = ?').all(itemId);
+};
+
+export const addAnnotation = (itemId: number, type: string, content: string, position: string, color: string) => {
+  const info = db.prepare('INSERT INTO annotations (itemId, type, content, position, color) VALUES (?, ?, ?, ?, ?)').run(itemId, type, content, position, color);
+  return info.lastInsertRowid;
+};
 
 export function getNotes(itemId: number) {
   return db.prepare('SELECT * FROM notes WHERE itemId = ?').all(itemId);
