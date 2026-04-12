@@ -1,14 +1,48 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import crypto from 'node:crypto';
 import started from 'electron-squirrel-startup';
-import { initDatabase, getItems, addItem, getNotes, addNote, getStoragePath, updateItem, getAnnotations, addAnnotation } from './database.js';
+import { 
+  initDatabase, 
+  getItems, 
+  addItem, 
+  getNotes, 
+  addNote, 
+  getStoragePath, 
+  updateItem, 
+  getAnnotations, 
+  addAnnotation,
+  getItemById,
+  getCollections,
+  createCollection,
+  addItemToCollection,
+  getItemsByCollection,
+  getSyncLog,
+  getSyncCount,
+  getAllTags,
+  addTagToItem,
+  removeTagFromItem,
+  searchDeep,
+  upsertConsensus,
+  getConsensus,
+  getItemsByCategory,
+  addFullText
+} from './database.js';
 import { StyleStore } from './styles.js';
 import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISBNFromText } from './gatherer.js';
 import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser.js';
 import { discoveryEngine } from './discovery.js';
 import { captureSnapshot } from './archiver.js';
+import { CitationEngine, MINIMAL_APA_STYLE } from './citation.js';
+import { translatorService } from './translator-service.js';
+import { indexItemTask } from './indexer.js';
+import { CommunityRelay } from './relay-service.js';
+import { NatService } from './nat-service.js';
+import { ocrService } from './ocr-service.js';
+import { scrapeDocx } from './scrapper.js';
+// import { discoveryEngine as disc } from './discovery_api.js'; // Removed invalid import
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -22,15 +56,14 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: path.join(__dirname, '../assets/icon.png'),
-    titleBarStyle: 'hidden', // Modern titlebar
+    icon: path.join(__dirname, '../../assets/icon.png'), // Adjusted path for .vite/build/
+    titleBarStyle: 'hidden',
     backgroundColor: '#0d0d12',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
-  // and load the index.html of the app.
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -38,13 +71,8 @@ const createWindow = () => {
       path.join(__dirname, '../renderer/main_window/index.html'),
     );
   }
-
-  // Open the DevTools if needed for debugging
-  // mainWindow.webContents.openDevTools();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
 app.on('ready', () => {
   initDatabase();
   const styleStore = new StyleStore(app.getPath('userData'));
@@ -57,9 +85,60 @@ app.on('ready', () => {
   ipcMain.handle('fetch-metadata', (_, doi) => fetchMetadataFromDOI(doi));
   ipcMain.handle('update-item', (_, id, fields) => updateItem(id, fields));
   
+  let relay: CommunityRelay | null = null;
+  let nat: NatService | null = null;
+
+  ipcMain.handle('toggle-community-mode', async (_, enabled: boolean) => {
+    if (enabled) {
+        relay = new CommunityRelay(discoveryEngine.nodeId);
+        relay.startAutoCheckIn();
+        
+        // UPnP Automation
+        nat = new NatService();
+        const natSuccess = await nat.mapPorts();
+        
+        const globalPeers = await relay.getGlobalPeers();
+        globalPeers.forEach(ip => discoveryEngine.addRemotePeer(ip));
+        
+        return { success: true, nat: natSuccess };
+    } else {
+        if (relay) relay.stop();
+        if (nat) await nat.unmapPorts();
+        relay = null;
+        nat = null;
+        discoveryEngine.clearRemotePeers();
+        return { success: false, nat: false };
+    }
+  });
+
+  app.on('will-quit', async () => {
+    if (nat) await nat.unmapPorts();
+  });
+
+  ipcMain.handle('get-peers', () => discoveryEngine.getOnlinePeers());
+  ipcMain.handle('get-discoveries', () => discoveryEngine.getLocalDiscoveries());
+  
+  ipcMain.handle('run-mastery-scan', async (_, itemId) => {
+    const item = getItemById(itemId);
+    if (!item || !item.filePath) return { success: false, error: 'File not found' };
+    
+    try {
+      const buffer = fs.readFileSync(item.filePath);
+      const results = await ocrService.scanPdf(buffer);
+      const fullText = results.join('\n');
+      
+      addFullText(itemId, fullText);
+      updateItem(itemId, { masteryStatus: 'indexed' });
+      
+      return { success: true, text: fullText };
+    } catch (e: any) {
+      console.error('[OCR] Mastery Scan Error:', e);
+      return { success: false, error: e.message };
+    }
+  });
+  
   // Vashira Sentinel: Local Ingest Server (Port 51239)
   const ingestServer = http.createServer((req, res) => {
-    // CORS for Extension
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -72,18 +151,15 @@ app.on('ready', () => {
       req.on('end', async () => {
         try {
           const data = JSON.parse(body);
-          const { fetchMetadataFromDOI } = require('./gatherer');
-          
           let itemMetadata;
           if (data.doi) {
             itemMetadata = await fetchMetadataFromDOI(data.doi);
           } else {
-            itemMetadata = data; // Directly from scraper
+            itemMetadata = data;
           }
 
           if (itemMetadata) {
              const itemId = await addItem(itemMetadata);
-             // Broadcast to UI
              if (mainWindow) mainWindow.webContents.send('item-ingested', { ...itemMetadata, id: itemId });
              res.writeHead(200, { 'Content-Type': 'application/json' });
              res.end(JSON.stringify({ success: true, itemId }));
@@ -99,14 +175,10 @@ app.on('ready', () => {
     }
   });
 
-  ingestServer.listen(51239, '127.0.0.1', () => {
-    console.log('Vashira Sentinel Ingest Server live on port 51239');
-  });
+  ingestServer.listen(51239, '127.0.0.1');
 
   ipcMain.handle('check-duplicates', async (_, title) => {
-    const { getItems } = require('./database');
     const items = getItems();
-    // Basic fuzzy match: common words removal + lowercase
     const clean = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(' ').filter(w => w.length > 3).join(' ');
     const target = clean(title);
     
@@ -120,8 +192,6 @@ app.on('ready', () => {
   ipcMain.handle('add-annotation', (_, itemId, type, content, position, color) => addAnnotation(itemId, type, content, position, color));
 
   ipcMain.handle('generate-citation', async (_, itemId, styleName = 'apa') => {
-    const { getItemById } = require('./database');
-    const { CitationEngine } = require('./citation');
     const item = getItemById(itemId);
     if (!item) return null;
     
@@ -137,18 +207,16 @@ app.on('ready', () => {
 
   ipcMain.handle('get-installed-styles', () => styleStore.listCachedStyles());
   ipcMain.handle('install-style', (_, styleName) => styleStore.getStyleXml(styleName));
+  ipcMain.handle('get-collections', () => getCollections());
+  ipcMain.handle('create-collection', (_, name, parentId) => createCollection(name, parentId));
+  ipcMain.handle('add-item-to-collection', (_, itemId, collectionId) => addItemToCollection(itemId, collectionId));
+  ipcMain.handle('get-items-by-collection', (_, collectionId) => getItemsByCollection(collectionId));
+  ipcMain.handle('get-sync-log', () => getSyncLog());
+  ipcMain.handle('get-sync-count', () => getSyncCount());
   
-  // Collections
-  ipcMain.handle('get-collections', () => require('./database').getCollections());
-  ipcMain.handle('create-collection', (_, name, parentId) => require('./database').createCollection(name, parentId));
-  ipcMain.handle('add-item-to-collection', (_, itemId, collectionId) => require('./database').addItemToCollection(itemId, collectionId));
-  ipcMain.handle('get-items-by-collection', (_, collectionId) => require('./database').getItemsByCollection(collectionId));
-  ipcMain.handle('get-sync-log', () => require('./database').getSyncLog());
-  ipcMain.handle('get-sync-count', () => require('./database').getSyncCount());
-  
-  ipcMain.handle('get-peers', () => require('./discovery').discoveryEngine.getOnlinePeers());
-  ipcMain.handle('get-discoveries', () => require('./discovery').discoveryEngine.getLocalDiscoveries());
-  ipcMain.handle('announce-metadata', (_, doi, title) => require('./discovery').discoveryEngine.announceMetadata(doi, title));
+  ipcMain.handle('get-peers', () => discoveryEngine.getOnlinePeers());
+  ipcMain.handle('get-discoveries', () => discoveryEngine.getLocalDiscoveries());
+  ipcMain.handle('announce-metadata', (_, doi, title, itemId) => discoveryEngine.announceMetadata(doi, title, itemId));
   
   ipcMain.handle('import-pdf', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -164,23 +232,14 @@ app.on('ready', () => {
     const destPath = path.join(storagePath, fileName);
 
     try {
-      // Ensure storage directory exists
-      if (!fs.existsSync(storagePath)) {
-        fs.mkdirSync(storagePath, { recursive: true });
-      }
-
-      // Copy to vault (async to avoid blocking)
+      if (!fs.existsSync(storagePath)) fs.mkdirSync(storagePath, { recursive: true });
       await fs.promises.copyFile(sourcePath, destPath);
 
-      // Read for metadata (small chunk)
       const handle = await fs.promises.open(destPath, 'r');
       const { buffer } = await handle.read(Buffer.alloc(20000), 0, 20000, 0);
       await handle.close();
 
       const text = buffer.toString('utf8');
-      
-      // [VASHIRA 5.0] Content Fingerprinting
-      const crypto = require('node:crypto');
       const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
 
       const doi = extractDOIFromText(text);
@@ -188,15 +247,10 @@ app.on('ready', () => {
 
       let metadata: any = null;
       if (doi) {
-        try {
-          metadata = await fetchMetadataFromDOI(doi);
-        } catch (e) {
-          console.warn('DOI fetch failed, checking ISBN or heuristics.');
-        }
+        try { metadata = await fetchMetadataFromDOI(doi); } catch (e) {}
       }
 
       if (!metadata && isbn) {
-        const { translatorService } = require('./translator-service');
         metadata = await translatorService.translate(isbn);
       }
       
@@ -215,18 +269,14 @@ app.on('ready', () => {
       const indexedItem = { ...metadata, filePath: destPath, fileHash };
       const itemId = await addItem(indexedItem);
       
-      // [VASHIRA 4.0] Trigger P2P Mastery Announcement
       if (indexedItem.doi || indexedItem.fileHash) {
         discoveryEngine.announceMetadata(indexedItem.doi || indexedItem.fileHash, indexedItem.title, itemId as number);
       }
 
-      // [VASHIRA 4.0] Trigger Deep Indexing
-      if (destPath) {
-        setTimeout(async () => {
-          const { indexItemTask } = require('./indexer');
-          await indexItemTask({ ...indexedItem, id: itemId });
-        }, 100);
-      }
+      setTimeout(async () => {
+        await indexItemTask({ ...indexedItem, id: itemId });
+      }, 100);
+
       return { ...indexedItem, id: itemId };
     } catch (error: any) {
       console.error('PDF Import error:', error);
@@ -262,27 +312,23 @@ app.on('ready', () => {
   });
 
   ipcMain.handle('read-file', async (_, filePath) => {
-    if (fs.existsSync(filePath)) {
-      return fs.readFileSync(filePath);
-    }
+    if (fs.existsSync(filePath)) return fs.readFileSync(filePath);
     return null;
   });
 
-  // Zotero 4.0 Mastery Handlers
-  ipcMain.handle('get-all-tags', () => require('./database').getAllTags());
-  ipcMain.handle('add-tag-to-item', (_, itemId, tagId) => require('./database').addTagToItem(itemId, tagId));
-  ipcMain.handle('remove-tag-from-item', (_, itemId, tagId) => require('./database').removeTagFromItem(itemId, tagId));
-  ipcMain.handle('search-deep', (_, query) => require('./database').searchDeep(query));
-  ipcMain.handle('index-item', (_, item) => require('./indexer').indexItemTask(item));
+  ipcMain.handle('get-all-tags', () => getAllTags());
+  ipcMain.handle('add-tag-to-item', (_, itemId, tagId) => addTagToItem(itemId, tagId));
+  ipcMain.handle('remove-tag-from-item', (_, itemId, tagId) => removeTagFromItem(itemId, tagId));
+  ipcMain.handle('search-deep', (_, query) => searchDeep(query));
+  ipcMain.handle('index-item', (_, item) => indexItemTask(item));
+  
+  // For global search, we keep the dynamic require for OpenAlex api if it's separate
   ipcMain.handle('search-global', (_, query) => require('./discovery_api').searchOpenAlex(query));
   
-  ipcMain.handle('get-items-by-category', (_, category) => require('./database').getItemsByCategory(category));
+  ipcMain.handle('get-items-by-category', (_, category) => getItemsByCategory(category));
 
   ipcMain.handle('import-metadata', async (_, identifiers: string) => {
-    // [VASHIRA 6.0] Split by , | or whitespace
     const ids = identifiers.split(/[ ,|]+/).filter(id => id.trim().length > 0);
-    const { translatorService } = require('./translator-service');
-    
     const results = [];
     for (const id of ids) {
        try {
@@ -290,26 +336,20 @@ app.on('ready', () => {
          if (metadata) {
            const itemId = await addItem(metadata);
            results.push({ ...metadata, id: itemId });
-           
-           if (metadata.doi) {
-              discoveryEngine.announceMetadata(metadata.doi, metadata.title, itemId as number);
-           }
+           if (metadata.doi) discoveryEngine.announceMetadata(metadata.doi, metadata.title, itemId as number);
          }
        } catch (e) {
-         console.error(`[Batch Import] Failed for \${id}:`, e);
+         console.error(`[Batch Import] Failed:`, e);
        }
     }
     return results;
   });
 
   ipcMain.handle('magic-categorize', async () => {
-    const { getItems, updateItem } = require('./database');
-    const { categorizeItems } = require('./parser');
     const items = getItems();
     const categorizations = categorizeItems(items);
-    
     for (const { itemId, category } of categorizations) {
-      updateItem(itemId, { extra: category }); // Store in extra for now
+      updateItem(itemId, { extra: category });
     }
     return true;
   });
@@ -329,7 +369,6 @@ app.on('ready', () => {
   });
 
   ipcMain.handle('open-file', async (_, filePath) => {
-    const { shell } = require('electron');
     if (filePath && fs.existsSync(filePath)) {
       await shell.openPath(filePath);
       return true;
@@ -337,22 +376,17 @@ app.on('ready', () => {
     return false;
   });
 
-  // P2P Mastery Exchange
   discoveryEngine.on('metadata-response', (metadata: any) => {
     if (metadata) {
       const identifier = metadata.doi || metadata.fileHash;
-      if (identifier) {
-        require('./database').upsertConsensus(identifier, metadata);
-      }
+      if (identifier) upsertConsensus(identifier, metadata);
     }
   });
 
   discoveryEngine.on('discovery', async ({ doi, peer }: { doi: string; peer: any }) => {
     const allItems = await getItems();
     const item = allItems.find((i: any) => i.doi === doi || i.fileHash === doi);
-    if (item) {
-      discoveryEngine.sendMetadata(item, peer);
-    }
+    if (item) discoveryEngine.sendMetadata(item, peer);
   });
 
   ipcMain.handle('import-from-peer', async (_, doi, peerIp) => {
@@ -369,177 +403,131 @@ app.on('ready', () => {
           resolve(metadata);
         }
       };
-
       discoveryEngine.on('metadata-response', handleResponse);
       discoveryEngine.requestMetadata(doi, peerIp);
     });
   });
 
-  ipcMain.handle('get-consensus', (_, identifier) => require('./database').getConsensus(identifier));
+  ipcMain.handle('get-consensus', (_, identifier) => getConsensus(identifier));
+
+  ipcMain.handle('graphify-item', async (_, itemId) => {
+    const item = getItemById(itemId);
+    if (!item || !item.filePath || !item.filePath.toLowerCase().endsWith('.docx')) {
+      return { success: false, error: 'Valid .docx file not found' };
+    }
+    
+    try {
+      const connections = await scrapeDocx(item.filePath);
+      return { success: true, connections };
+    } catch (e: any) {
+      console.error('[Main] Graphify Error:', e);
+      return { success: false, error: e.message };
+    }
+  });
 
   createWindow();
 
-  // THE WEB-SNATCHER (5.0) & SCRIBE BRIDGE (6.0)
   const snatcher = http.createServer(async (req, res) => {
-    // Enable CORS for Extensions and Word Add-in
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204); res.end(); return;
-    }
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-    if (req.method === 'POST') {
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const pathname = url.pathname;
+
+    if (req.method === 'GET') {
+      if (pathname === '/items' || pathname === '/api/v1/items') {
+        try {
+          const items = await getItems();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(items));
+        } catch (e) { res.writeHead(500); res.end('Hub Error'); }
+      } else if (pathname === '/api/v1/collections') {
+        try {
+          const collections = await getCollections();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(collections));
+        } catch (e) { res.writeHead(500); res.end(); }
+      } else if (pathname === '/api/v1/tags') {
+        try {
+          const tags = await getAllTags();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(tags));
+        } catch (e) { res.writeHead(500); res.end(); }
+      } else if (pathname === '/api/v1/gefyra-status') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', version: '7.0', app: 'vashira' }));
+      } else if (pathname === '/mobile') {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(`
+              <!DOCTYPE html>
+              <html>
+              <head><title>Vashira Sovereign Bridge</title></head>
+              <body><h1>Mobile Bridge Ready</h1></body>
+              </html>
+          `);
+      } else { res.writeHead(404); res.end(); }
+    } else if (req.method === 'POST') {
       let body = '';
       req.on('data', chunk => { body += chunk.toString(); });
       req.on('end', async () => {
         try {
+          if (pathname === '/api/v1/format-bibliography') {
+             const data = JSON.parse(body);
+             const itemIds = data.itemIds || [];
+             const itemsFormat = [];
+             for (const id of itemIds) {
+                 const it = await getItemById(id);
+                 if (it) itemsFormat.push(it);
+             }
+             const engine = new CitationEngine(itemsFormat, MINIMAL_APA_STYLE);
+             const bibs = itemsFormat.map(it => `${it.authors} (${it.published}). ${it.title}. ${it.journal || ''} ${it.publisher || ''}.`).join('\n\n');
+             res.writeHead(200, { 'Content-Type': 'application/json' });
+             res.end(JSON.stringify({ bibliography: bibs }));
+             return;
+          }
+
+          if (pathname === '/ingest') {
+              const { identifier } = JSON.parse(body);
+              const metadata = await translatorService.translate(identifier);
+              if (metadata) {
+                  const itemId = await addItem(metadata);
+                  if (mainWindow) mainWindow.webContents.send('snatched-item', metadata);
+                  res.writeHead(200); res.end('Mastered');
+              } else { res.writeHead(404); res.end('Not Found'); }
+              return;
+          }
+
+          // Default fallback for root POST (extension submissions)
           const item = JSON.parse(body);
           const itemId = await addItem(item);
-          
-          if (mainWindow) {
-            mainWindow.webContents.send('snatched-item', item);
-          }
+          if (mainWindow) mainWindow.webContents.send('snatched-item', item);
+          if (item.doi) discoveryEngine.announceMetadata(item.doi, item.title, itemId as number);
 
-          if (item.doi) {
-            discoveryEngine.announceMetadata(item.doi, item.title, itemId as number);
-          }
-
-          // ASYNC ARCHIVING
-          if (item.url) {
+          if (item.url && item.htmlContent) {
+            // we could save htmlContent directly here if we had an archiver method for it, but for now just rely on captureSnapshot 
             setTimeout(async () => {
               const snapshotPath = await captureSnapshot(item.url, getStoragePath(), itemId as number);
-              if (snapshotPath) {
-                updateItem(itemId as number, { snapshotPath });
-              }
+              if (snapshotPath) updateItem(itemId as number, { snapshotPath });
             }, 500);
           }
-
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ status: 'Mastered' }));
+          res.end(JSON.stringify({ status: 'Mastered', id: itemId }));
         } catch (e) {
+          console.error(e);
           res.writeHead(400); res.end('Invalid Metadata');
         }
       });
-    } else if (req.method === 'GET' && req.url === '/items') {
-      try {
-        const items = await getItems();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(items));
-      } catch (e) {
-        res.writeHead(500); res.end('Hub Error');
-      }
-    } else if (req.url === '/mobile') {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Vashira Sovereign Bridge</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                <style>
-                    :root { --accent: #a78bfa; --bg: #0d0d12; --glass: rgba(255,255,255,0.05); }
-                    body { background: var(--bg); color: white; font-family: -apple-system, system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 24px; box-sizing: border-box; }
-                    .glass { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 32px; padding: 40px; text-align: center; width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
-                    h1 { font-size: 1.5rem; margin-bottom: 8px; letter-spacing: -0.02em; }
-                    p { font-size: 0.9rem; opacity: 0.6; line-height: 1.5; margin-bottom: 32px; }
-                    .btn { background: var(--accent); color: black; border: none; padding: 20px; border-radius: 16px; font-weight: 700; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-                    .btn:active { transform: scale(0.95); }
-                    #status { margin-top: 24px; font-size: 0.8rem; height: 1.2rem; }
-                    .loader { border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid var(--accent); border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; display: none; margin: 0 auto; }
-                    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                </style>
-            </head>
-            <body>
-                <div class="glass">
-                    <div style="background: var(--accent); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                    </div>
-                    <h1>Mobile Bridge</h1>
-                    <p>Scan a DOI or ISBN barcode to sync this device with your Sovereign Research Hub.</p>
-                    <button id="scan" class="btn">CAPTURE METADATA</button>
-                    <div id="status">Ready for Synchronicity.</div>
-                    <div id="loader" class="loader"></div>
-                </div>
-                <script>
-                    const btn = document.getElementById('scan');
-                    const status = document.getElementById('status');
-                    const loader = document.getElementById('loader');
-                    
-                    btn.onclick = async () => {
-                        try {
-                            const id = prompt("Manual Capture: Paste DOI/ISBN detected or use system camera.");
-                            if (id) {
-                                status.innerText = "Propagating Metadata...";
-                                loader.style.display = 'block';
-                                const res = await fetch('/ingest', { 
-                                    method: 'POST', 
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ identifier: id }) 
-                                });
-                                status.innerText = "Mastered in Vault.";
-                                loader.style.display = 'none';
-                            }
-                        } catch (e) {
-                            status.innerText = e.message;
-                            loader.style.display = 'none';
-                        }
-                    }
-                </script>
-            </body>
-            </html>
-        `);
-    } else if (req.url === '/ingest' && req.method === 'POST') {
-        let body = '';
-        req.on('data', chunk => { body += chunk.toString(); });
-        req.on('end', async () => {
-            try {
-                const { identifier } = JSON.parse(body);
-                const { translatorService } = require('./translator-service');
-                const metadata = await translatorService.translate(identifier);
-                if (metadata) {
-                    const itemId = await addItem(metadata);
-                    if (mainWindow) {
-                        mainWindow.webContents.send('snatched-item', metadata);
-                    }
-                    res.writeHead(200); res.end('Mastered');
-                } else {
-                    res.writeHead(404); res.end('Not Found');
-                }
-            } catch (e) { res.writeHead(500); res.end('Vault Failure'); }
-        });
-    } else if (req.method === 'GET' && req.url?.startsWith('/download/')) {
-        const itemId = parseInt(req.url.split('/')[2]);
-        const item = (await getItems()).find((i: any) => i.id === itemId);
-        if (item && item.filePath && fs.existsSync(item.filePath)) {
-            res.writeHead(200, { 
-                'Content-Type': 'application/pdf',
-                'Content-Disposition': `attachment; filename="\${path.basename(item.filePath)}"` 
-            });
-            fs.createReadStream(item.filePath).pipe(res);
-        } else {
-            res.writeHead(404); res.end('File not found in Mastery Hub');
-        }
-    } else {
-      res.writeHead(404); res.end();
-    }
+    } else { res.writeHead(404); res.end(); }
   });
-  snatcher.listen(51235, '0.0.0.0', () => console.log('[Snatcher] Ready on port 51235 (Global Access)'));
+  snatcher.listen(51235, '0.0.0.0');
 });
 
-// Quit when all windows are closed, except on macOS.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.

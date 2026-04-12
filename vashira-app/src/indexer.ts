@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { addFullText } from './database';
+import { addFullText, updateItem } from './database';
+import { ocrService } from './ocr-service';
 
 /**
  * Sovereign Indexer 4.0
@@ -15,9 +16,15 @@ export async function indexItemTask(item: any) {
     // This looks for string blocks in the PDF binary without heavy dependencies.
     const text = extractSovereignText(data);
     
-    if (text.length > 0 && item.id) {
+    if (text.trim().length < 200 && (await ocrService.isSilentPdf(data))) {
+      console.warn(`[OCR] Silent PDF Detected: \${item.title}. Flagging for Mastery Scan.`);
+      if (item.id) {
+        updateItem(item.id, { masteryStatus: 'unreadable' });
+      }
+    } else if (text.length > 0 && item.id) {
       addFullText(item.id, text);
-      console.log(`[Deep Search] Indexed Mastery: ${item.title} (${text.length} chars)`);
+      updateItem(item.id, { masteryStatus: 'indexed' });
+      console.log(`[Deep Search] Indexed Mastery: \${item.title} (\${text.length} chars)`);
     }
   } catch (error) {
     console.error('Deep Search Indexing failed:', error);

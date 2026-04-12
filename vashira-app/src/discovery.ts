@@ -14,8 +14,9 @@ class PeerDiscovery extends EventEmitter {
   private PORT = 41234;
   private BROADCAST_ADDR = '255.255.255.255';
   private peers: Set<string> = new Set(['Local Hub']);
+  private remotePeers: Set<string> = new Set();
   private discoveries: any[] = [];
-  private nodeId = `node-\${Math.random().toString(36).substring(7)}`;
+  public nodeId = `node-${Math.random().toString(36).substring(7)}`;
 
   constructor() {
     super();
@@ -27,9 +28,9 @@ class PeerDiscovery extends EventEmitter {
         if (data.nodeId === this.nodeId) return; // Skip self
 
         if (data.type === 'HEARTBEAT') {
-          this.peers.add(`MasterNode@\${rinfo.address}`);
+          this.peers.add(`MasterNode@${rinfo.address}`);
         } else if (data.type === 'MASTERY_ANNOUNCE') {
-          console.log(`[P2P] Insight from \${rinfo.address}: \${data.title}`);
+          console.log(`[P2P] Insight from ${rinfo.address}: ${data.title}`);
           const identifier = data.doi;
           if (identifier) {
              require('./database').upsertConsensus(identifier, { title: data.title, authors: 'Unknown', published: 'N/A' });
@@ -43,7 +44,7 @@ class PeerDiscovery extends EventEmitter {
           };
           this.discoveries.unshift(newDiscovery);
           if (this.discoveries.length > 50) this.discoveries.pop();
-          this.peers.add(`MasterNode@\${rinfo.address}`);
+          this.peers.add(`MasterNode@${rinfo.address}`);
         } else if (data.type === 'REQUEST_METADATA') {
           this.emit('metadata-request', { doi: data.doi, peer: rinfo.address });
         } else if (data.type === 'RESPONSE_METADATA') {
@@ -54,7 +55,7 @@ class PeerDiscovery extends EventEmitter {
 
     this.socket.bind(this.PORT, () => {
       this.socket.setBroadcast(true);
-      console.log(`[Vashira 4.0] Sovereign Discovery Online on port \${this.PORT}`);
+      console.log(`[Vashira Community] Discovery Online on port ${this.PORT}`);
       this.broadcastHeartbeat();
       setInterval(() => this.broadcastHeartbeat(), 30000);
     });
@@ -62,7 +63,22 @@ class PeerDiscovery extends EventEmitter {
 
   private broadcastHeartbeat() {
     const msg = JSON.stringify({ type: 'HEARTBEAT', nodeId: this.nodeId });
+    // Broadcast to LAN
     this.socket.send(msg, 0, msg.length, this.PORT, this.BROADCAST_ADDR);
+    
+    // Unicast to WAN peers (Community Mode)
+    this.remotePeers.forEach(peerIp => {
+      this.socket.send(msg, 0, msg.length, this.PORT, peerIp);
+    });
+  }
+
+  public addRemotePeer(ip: string) {
+    this.remotePeers.add(ip);
+    this.peers.add(`GlobalNode@${ip}`);
+  }
+
+  public clearRemotePeers() {
+    this.remotePeers.clear();
   }
 
   public getOnlinePeers() { return Array.from(this.peers); }
@@ -76,7 +92,13 @@ class PeerDiscovery extends EventEmitter {
       title,
       itemId
     });
+    // LAN
     this.socket.send(message, 0, message.length, this.PORT, this.BROADCAST_ADDR);
+    
+    // WAN
+    this.remotePeers.forEach(peerIp => {
+       this.socket.send(message, 0, message.length, this.PORT, peerIp);
+    });
   }
 
   public requestMetadata(doi: string, peerIp: string) {
@@ -89,5 +111,6 @@ class PeerDiscovery extends EventEmitter {
     this.socket.send(message, 0, message.length, this.PORT, peerIp);
   }
 }
+
 
 export const discoveryEngine = new PeerDiscovery();

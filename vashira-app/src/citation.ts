@@ -1,7 +1,7 @@
 // @ts-ignore
 import CSL from 'citeproc';
 
-const MINIMAL_APA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
+export const MINIMAL_APA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
 <style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" demote-non-dropping-particle="never" default-locale="en-US">
   <info>
     <title>Vashira APA (Minimal)</title>

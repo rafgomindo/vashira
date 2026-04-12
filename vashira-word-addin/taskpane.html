@@ -13,10 +13,17 @@
         .meta { font-size: 0.75rem; color: #9ca3af; }
         h2 { color: #6366f1; font-size: 1.2rem; margin-bottom: 20px; }
         #status { font-size: 0.7rem; opacity: 0.5; margin-top: 20px; text-align: center; }
+        .toolbar { margin-bottom: 15px; display: flex; gap: 10px; }
+        button { background: #6366f1; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.8rem; }
+        button:hover { background: #4f46e5; }
     </style>
 </head>
 <body>
     <h2>Mastery Hub</h2>
+    <div class="toolbar">
+        <button id="refreshBtn">Refresh Library</button>
+        <button id="generateBibBtn">Generate Bibliography</button>
+    </div>
     <div id="items-list">Loading Mastery Hub...</div>
     <div id="status">Vashira Hub connection active on :51235</div>
 
@@ -24,6 +31,8 @@
         Office.onReady((info) => {
             if (info.host === Office.HostType.Word) {
                 loadHubItems();
+                document.getElementById('refreshBtn').onclick = loadHubItems;
+                document.getElementById('generateBibBtn').onclick = generateBibliography;
             }
         });
 
@@ -50,11 +59,52 @@
         }
 
         function insertCitation(item) {
-            const citeText = `(\${item.authors.split(',')[0].trim()}, \${item.published})`;
+            const authorPart = item.authors ? item.authors.split(',')[0].trim() : "Unknown";
+            const citeText = `(${authorPart}, ${item.published || "n.d."})`;
             Word.run(async (context) => {
                 const range = context.document.getSelection();
-                range.insertText(citeText, Word.InsertLocation.replace);
+                const cc = range.insertContentControl();
+                cc.title = "Vashira Citation";
+                cc.tag = `vashira-cite:${item.id}`;
+                cc.insertText(citeText, Word.InsertLocation.replace);
+                cc.appearance = Word.ContentControlAppearance.boundingBox;
                 await context.sync();
+            }).catch(e => console.error("Error inserting citation", e));
+        }
+
+        async function generateBibliography() {
+            Word.run(async (context) => {
+                const controls = context.document.contentControls;
+                context.load(controls, 'tag');
+                await context.sync();
+
+                const itemIds = [];
+                for (let i = 0; i < controls.items.length; i++) {
+                    if (controls.items[i].tag.startsWith('vashira-cite:')) {
+                        const id = controls.items[i].tag.split(':')[1];
+                        if (id) itemIds.push(parseInt(id, 10));
+                    }
+                }
+
+                if (itemIds.length === 0) return;
+
+                try {
+                    const response = await fetch('http://localhost:51235/api/v1/format-bibliography', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ itemIds })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const docBody = context.document.body;
+                        docBody.insertParagraph("References", Word.InsertLocation.end).styleBuiltIn = Word.Style.heading1;
+                        docBody.insertText(data.bibliography, Word.InsertLocation.end);
+                        await context.sync();
+                    }
+                } catch (e) {
+                    console.error("Error formatting bibliography", e);
+                }
             });
         }
     </script>

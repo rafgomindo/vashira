@@ -4,7 +4,7 @@ import {
   ChevronRight, FileText, Download, Zap, Share2, 
   Tag, Clock, Folder, Globe, Clipboard, Check, Filter,
   Columns, Smartphone, ShieldCheck, PenTool, MessageSquare,
-  Cpu, Terminal, Power, Camera, LayoutGrid, Network
+  Cpu, Terminal, Power, Camera, LayoutGrid, Network, Shield
 } from 'lucide-react';
 import Scribe from './components/Scribe.js';
 import { askTheOracle, OracleConfig } from './oracle.js';
@@ -26,6 +26,7 @@ interface ResearchItem {
   snapshotPath?: string;
   fileHash?: string;
   content?: string;
+  masteryStatus?: string;
 }
 
 const ConsensusAdvisory = ({ identifier, onApply }: { identifier: string | undefined, onApply: (m: any) => void }) => {
@@ -178,6 +179,8 @@ export default function App() {
   const [showSnapshotReader, setShowSnapshotReader] = useState(false);
   const [snapshotPath, setSnapshotPath] = useState('');
   const [peers, setPeers] = useState<string[]>([]);
+  const [communityMode, setCommunityMode] = useState(localStorage.getItem('vashira_community_mode') === 'true');
+  const [natStatus, setNatStatus] = useState(false);
   const [discoveries, setDiscoveries] = useState<any[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'alert' } | null>(null);
   const [tags, setTags] = useState<any[]>([]);
@@ -189,6 +192,7 @@ export default function App() {
   const [oracleQuery, setOracleQuery] = useState('');
   const [oracleResponse, setOracleResponse] = useState('');
   const [isOracleLoading, setIsOracleLoading] = useState(false);
+  const [activeItemConnections, setActiveItemConnections] = useState<{zoteroKeys: string[], gefyraTools: string[], vashiraItems: string[]} | null>(null);
   const [oracleConfig, setOracleConfig] = useState<OracleConfig>({
     apiKey: localStorage.getItem('vashira_oracle_key') || '',
     baseUrl: localStorage.getItem('vashira_oracle_url') || 'https://api.openai.com/v1',
@@ -314,6 +318,7 @@ export default function App() {
   }, [items, searchTerm]);
 
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState(['title', 'authors', 'published']);
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
@@ -323,16 +328,46 @@ export default function App() {
   }
 
   const graphData = useMemo(() => {
-    const nodes = filteredItems.map(item => ({
+    let nodes = filteredItems.map(item => ({
       id: item.id,
       name: item.title,
       val: 5,
       authors: item.authors,
-      published: item.published
+      published: item.published,
+      type: 'item'
     }));
     
-    const links: any[] = [];
-    // Enhanced connectivity: connect items with overlapping authors or common publishers
+    let links: any[] = [];
+
+    // Add Connections from active scan if any
+    if (activeItemConnections && selectedItem) {
+      // Vashira Items (Internal)
+      activeItemConnections.vashiraItems.forEach(targetId => {
+        const id = parseInt(targetId);
+        if (!items.find(i => i.id === id)) return; // Safety check
+        links.push({ source: selectedItem.id, target: id, type: 'vashira-cite' });
+      });
+
+      // Zotero Keys (External)
+      activeItemConnections.zoteroKeys.forEach(key => {
+        const nodeID = `zotero:${key}`;
+        if (!nodes.find(n => n.id === nodeID)) {
+          nodes.push({ id: nodeID, name: `Zotero: ${key}`, val: 3, authors: '', published: '', type: 'zotero' } as any);
+        }
+        links.push({ source: selectedItem.id, target: nodeID, type: 'zotero-cite' });
+      });
+
+      // Gefyra Tools (Tools)
+      activeItemConnections.gefyraTools.forEach(tool => {
+        const nodeID = `gefyra:${tool}`;
+        if (!nodes.find(n => n.id === nodeID)) {
+          nodes.push({ id: nodeID, name: `Gefyra: ${tool}`, val: 3, authors: '', published: '', type: 'tool' } as any);
+        }
+        links.push({ source: selectedItem.id, target: nodeID, type: 'gefyra-link' });
+      });
+    }
+
+    // Original connectivity: connect items with overlapping authors or common publishers
     filteredItems.forEach((item, i) => {
       const itemAuthors = item.authors.split(',').map(a => a.trim().toLowerCase());
       for (let j = i + 1; j < filteredItems.length; j++) {
@@ -445,13 +480,15 @@ export default function App() {
                </header>
                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                   <div className="glass" style={{ padding: '24px', borderRadius: '24px' }}>
-                     <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', opacity: 0.6 }}>LOCAL PEERS</h3>
+                     <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', opacity: 0.6 }}>NETWORK PEERS</h3>
                      {peers.map(p => (
                        <div key={p} style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%' }}></div>
-                          <span>{p}</span>
+                          <div style={{ width: '8px', height: '8px', background: p.includes('Global') ? '#3b82f6' : '#10b981', borderRadius: '50%' }}></div>
+                          <span style={{ flex: 1 }}>{p}</span>
+                          {p.includes('Global') && <Globe size={14} style={{ opacity: 0.4 }} />}
                        </div>
                      ))}
+                     {peers.length === 0 && <p style={{ opacity: 0.3, textAlign: 'center', fontSize: '0.8rem', padding: '20px' }}>No peers found. {communityMode ? 'Relay is active, waiting for nodes...' : 'Connecting to local mesh only.'}</p>}
                   </div>
                   <div className="glass" style={{ padding: '24px', borderRadius: '24px' }}>
                      <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', opacity: 0.6 }}>MASTERY FLUX</h3>
@@ -690,7 +727,43 @@ export default function App() {
                   </div>
                   <button className="primary-button" onClick={saveOracleConfig}>PERSIST CONNECTION</button>
                </div>
-            </div>
+
+                <div style={{ marginTop: '48px' }}>
+                   <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(59, 130, 246, 0.2)', background: 'rgba(59, 130, 246, 0.05)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{ width: '40px', height: '40px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                               <Globe size={20} color="#3b82f6" />
+                            </div>
+                            <div>
+                               <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Community Mode (WAN)</h3>
+                               <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>Sync automatically with Vashira users across the internet.</p>
+                            </div>
+                         </div>
+                         <button 
+                            className={`primary-button small ${communityMode ? 'active' : ''}`} 
+                            style={{ background: communityMode ? '#3b82f6' : 'rgba(255,255,255,0.1)', minWidth: '100px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
+                            onClick={async () => {
+                               const newState = !communityMode;
+                               const result = await (window as any).vashiraAPI.toggleCommunityMode(newState);
+                               setCommunityMode(newState);
+                               setNatStatus(result.nat);
+                               localStorage.setItem('vashira_community_mode', newState.toString());
+                               
+                               if (newState) {
+                                  showToast(result.nat ? "Global Mesh Joined (Protected)." : "Global Mesh Joined (Relay Only).", 'success');
+                               } else {
+                                  showToast("Returned to Sovereign LAN.", 'alert');
+                               }
+                            }}
+                         >
+                            {communityMode && <Shield size={12} color={natStatus ? '#10b981' : '#f59e0b'} />}
+                            {communityMode ? 'CONNECTED' : 'DISABLED'}
+                         </button>
+                      </div>
+                   </div>
+                </div>
+             </div>
           )}
         </div>
 
@@ -755,7 +828,27 @@ export default function App() {
                </section>
             </div>
             <footer style={{ padding: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '12px', flexDirection: 'column' }}>
-               <button className="primary-button small" style={{ width: '100%' }} onClick={() => (window as any).vashiraAPI.updateItem(selectedItem.id, selectedItem)}>SAVE CHANGES</button>
+               <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="primary-button small" style={{ flex: 1 }} onClick={() => (window as any).vashiraAPI.updateItem(selectedItem.id, selectedItem)}>SAVE CHANGES</button>
+                  {selectedItem.filePath?.toLowerCase().endsWith('.docx') && (
+                    <button 
+                      className="secondary-button small" 
+                      style={{ flex: 1, borderColor: 'var(--accent-color)', color: 'var(--accent-color)' }}
+                      onClick={async () => {
+                        const result = await (window as any).vashiraAPI.graphifyItem(selectedItem.id);
+                        if (result.success) {
+                          setActiveItemConnections(result.connections);
+                          setViewMode('graph');
+                          showToast('Document Network Scanned.', 'success');
+                        } else {
+                          showToast(result.error, 'alert');
+                        }
+                      }}
+                    >
+                      GRAPHIFY
+                    </button>
+                  )}
+               </div>
                <div style={{ display: 'flex', gap: '8px' }}>
                   <button className="icon-button glass small" style={{ flex: 1 }} title="Copy for Word" onClick={() => (window as any).vashiraAPI.generateCitation(selectedItem.id, 'apa').then((c: string) => { navigator.clipboard.writeText(c); showToast('Citation copied for Word.'); })}>
                     <PenTool size={14} /> <span style={{ fontSize: '0.7rem' }}>CITE (WORD)</span>

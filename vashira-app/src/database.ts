@@ -40,7 +40,8 @@ export function initDatabase() {
       doi TEXT,
       filePath TEXT,
       extra TEXT,
-      tags TEXT
+      tags TEXT,
+      masteryStatus TEXT DEFAULT 'none'
     );
 
     CREATE TABLE IF NOT EXISTS creators (
@@ -145,7 +146,13 @@ export function initDatabase() {
     { name: 'snapshotPath', type: 'TEXT' },
     { name: 'fileHash', type: 'TEXT' },
     { name: 'publisher', type: 'TEXT' },
-    { name: 'pages', type: 'INTEGER' }
+    { name: 'pages', type: 'INTEGER' },
+    { name: 'isbn', type: 'TEXT' },
+    { name: 'journal', type: 'TEXT' },
+    { name: 'volume', type: 'TEXT' },
+    { name: 'issue', type: 'TEXT' },
+    { name: 'edition', type: 'TEXT' },
+    { name: 'masteryStatus', type: 'TEXT' }
   ];
 
   requiredColumns.forEach(col => {
@@ -248,8 +255,8 @@ function logSync(action: string, targetTable: string, targetId: number, data: an
 
 export function addItem(item: any) {
   const info = db.prepare(`
-    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath, snapshotPath, fileHash, publisher, pages, extra) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (title, itemType, doi, authors, published, abstract, url, filePath, snapshotPath, fileHash, publisher, pages, extra, isbn, journal, volume, issue, edition) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     item.title, 
     item.itemType, 
@@ -263,7 +270,12 @@ export function addItem(item: any) {
     item.fileHash || '',
     item.publisher || '',
     item.pages || 0,
-    item.extra || ''
+    item.extra || '',
+    item.isbn || '',
+    item.journal || '',
+    item.volume || '',
+    item.issue || '',
+    item.edition || ''
   );
   
   const itemId = info.lastInsertRowid;

@@ -14,12 +14,14 @@ Vashira 7.0 is the definitive **Sovereign Research Hub**. Engineered with **Euro
 Vashira creates a **Mastery Vault** with **Decentralized P2P Synapse**, **AI RAG Intelligence**, and **High-Fidelity Web Archiving**. Your research is synchronized via DHT across your devices, indestructible and private.
 
 ## 💎 Premium Features
+- **Vashira Sentinel (9.0)**: Advanced browser extension with high-precision Google Scholar, arXiv, and PubMed scrapers.
+- **Deep Reader (8.0)**: Dual-pane PDF annotation engine with real-time insight layering and sticky notes.
+- **Sovereign Branding**: Unified high-fidelity identity across Desktop, Web, and Extension.
 - **Sovereign Archiver (7.0)**: Automatic high-fidelity visual/structural snapshots of every research site.
 - **The Oracle (5.0)**: RAG-powered AI interrogation of your entire collective knowledge.
 - **The Scribe (5.0)**: A master-grade Markdown editor with integrated citation engine.
-- **Omnipresent Connectors (6.0)**: Universal Browser Extension and Microsoft Word Scribe Add-in.
 - **P2P Synapse Discovery**: Real-time peer-to-peer DOI discovery over decentralized node broadcasts.
-- **CiteProc Logic**: Industrial-grade citation formatting supporting thousands of CSL styles.
+- **Smart Flows & Semantic Labels**: Dynamic metadata-driven collection system and color-coded visual indexing.
 
 ## 🚀 Getting Started
 

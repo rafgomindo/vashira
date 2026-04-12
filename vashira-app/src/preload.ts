@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   exportBibTeX: (items: any[]) => ipcRenderer.invoke('export-bibtex', items),
   magicCategorize: () => ipcRenderer.invoke('magic-categorize'),
   generateCitation: (itemId: number, styleName?: string) => ipcRenderer.invoke('generate-citation', itemId, styleName),
+  graphifyItem: (itemId: number) => ipcRenderer.invoke('graphify-item', itemId),
   getInstalledStyles: () => ipcRenderer.invoke('get-installed-styles'),
   installStyle: (styleName: string) => ipcRenderer.invoke('install-style', styleName),
   searchDeep: (query: string) => ipcRenderer.invoke('search-deep', query),
@@ -37,9 +38,11 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
     return () => ipcRenderer.removeListener('item-ingested', listener);
   },
   updateItem: (id: number, fields: any) => ipcRenderer.invoke('update-item', id, fields),
+  toggleCommunityMode: (enabled: boolean) => ipcRenderer.invoke('toggle-community-mode', enabled),
   
   // Vashira 5.0: Web-Snatcher Listener
   onSnatchedItem: (callback: (item: any) => void) => {
     ipcRenderer.on('snatched-item', (_, item) => callback(item));
-  }
+  },
+  runMasteryScan: (itemId: number) => ipcRenderer.invoke('run-mastery-scan', itemId)
 });

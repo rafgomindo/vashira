@@ -12,6 +12,11 @@ export interface MetadataItem {
   url?: string;
   publisher?: string;
   pages?: number;
+  isbn?: string;
+  journal?: string;
+  volume?: string;
+  issue?: string;
+  edition?: string;
   extra?: string;
 }
 
@@ -47,7 +52,12 @@ const CrossRefTranslator: Translator = {
         authors: data.author ? data.author.map((a: any) => `${a.given} ${a.family}`).join(', ') : 'Unknown',
         published: data.issued ? data.issued['date-parts'][0][0].toString() : 'N/A',
         abstract: data.abstract || '',
-        url: url
+        url: url,
+        publisher: data.publisher || '',
+        journal: data['container-title'] ? data['container-title'][0] : '',
+        volume: data.volume || '',
+        issue: data.issue || '',
+        pages: data.page || 0
       };
     } catch (e) {
       console.error('[CrossRef] Extraction failed:', e);
@@ -121,6 +131,7 @@ const OpenLibraryTranslator: Translator = {
         pages: bookData.number_of_pages || 0,
         abstract: bookData.notes || '',
         url: bookData.url || url,
+        isbn: isbn,
         extra: `ISBN:${isbn}`
       };
     } catch (e) {

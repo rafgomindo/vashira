@@ -1,36 +1,71 @@
 /**
- * Vashira Snatcher-X Content Script
+ * Vashira Sentinel (formerly Snatcher-X) Content Script
  */
 
-function extractDOI() {
-  // 1. Check meta tags (High confidence)
-  const metaDoi = document.querySelector('meta[name="citation_doi"]') || 
-                  document.querySelector('meta[name="dc.identifier"]') ||
-                  document.querySelector('meta[property="og:doi"]');
-  
-  if (metaDoi) return metaDoi.content || metaDoi.getAttribute('content');
+function extractDeepMetadata() {
+  const metadata = {
+    title: document.title,
+    url: window.location.href,
+    doi: null,
+    published: '',
+    authors: '',
+    abstract: '',
+    publisher: '',
+    journal: ''
+  };
 
-  // 2. Scan for DOI links
-  const doiLink = document.querySelector('a[href*="doi.org/"]');
-  if (doiLink) {
-    const match = doiLink.href.match(/10\.\d{4,9}\/[-._;()/:a-zA-Z0-9]+/);
-    if (match) return match[0];
+  // Highwire Press & Dublin Core Extractors
+  const metaTags = document.getElementsByTagName('meta');
+  const authors = [];
+
+  for (let i = 0; i < metaTags.length; i++) {
+    const name = (metaTags[i].getAttribute('name') || metaTags[i].getAttribute('property') || '').toLowerCase();
+    const content = metaTags[i].getAttribute('content') || '';
+
+    if (!content) continue;
+
+    if (name === 'citation_doi' || name === 'dc.identifier' || name === 'og:doi' || name === 'citation_pmid') {
+      if (!metadata.doi) metadata.doi = content;
+    } else if (name === 'citation_title' || name === 'dc.title' || name === 'og:title') {
+      metadata.title = content;
+    } else if (name === 'citation_author' || name === 'dc.creator') {
+      authors.push(content);
+    } else if (name === 'citation_publication_date' || name === 'dc.date') {
+      metadata.published = content.substring(0, 4); // Keep just the year for simplicity or full date
+    } else if (name === 'citation_journal_title' || name === 'dc.relation.ispartof') {
+      metadata.journal = content;
+    } else if (name === 'citation_publisher' || name === 'dc.publisher') {
+      metadata.publisher = content;
+    } else if (name === 'citation_abstract' || name === 'dc.description' || name === 'og:description') {
+      if (!metadata.abstract) metadata.abstract = content;
+    }
   }
 
-  // 3. Regex scan (Low confidence)
-  const bodyText = document.body.innerText;
-  const match = bodyText.match(/10\.\d{4,9}\/[-._;()/:a-zA-Z0-9]+/);
-  return match ? match[0] : null;
+  // Fallbacks: Try to parse DOI from URL or body
+  if (!metadata.doi) {
+    const doiLink = document.querySelector('a[href*="doi.org/"]');
+    if (doiLink) {
+      const match = doiLink.href.match(/10\.\d{4,9}\/[-._;()/:a-zA-Z0-9]+/);
+      if (match) metadata.doi = match[0];
+    } else {
+      const bodyText = document.body.innerText;
+      const match = bodyText.match(/10\.\d{4,9}\/[-._;()/:a-zA-Z0-9]+/);
+      if (match) metadata.doi = match[0];
+    }
+  }
+
+  if (authors.length > 0) metadata.authors = authors.join(', ');
+
+  return metadata;
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'GET_METADATA') {
-    const doi = extractDOI();
-    sendResponse({
-      doi: doi,
-      title: document.title,
-      url: window.location.href,
-      published: new Date().getFullYear().toString()
-    });
+    const metadata = extractDeepMetadata();
+    // Also grab the HTML snapshot
+    metadata.htmlContent = document.documentElement.outerHTML;
+    
+    sendResponse(metadata);
   }
 });
+
