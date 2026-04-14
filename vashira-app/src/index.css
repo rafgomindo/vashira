@@ -62,15 +62,69 @@ body {
   width: 100vw;
 }
 
-.titlebar {
+.titlebar-container {
   height: 32px;
-  background: transparent;
+  background-color: var(--bg-color);
   width: 100%;
   position: fixed;
   top: 0;
   left: 0;
   z-index: 9999;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   -webkit-app-region: drag;
+  user-select: none;
+}
+
+.window-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.window-control-btn {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.window-control-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.window-control-btn.close:hover {
+  background-color: #e81123;
+  color: white;
+}
+
+.top-menu {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  margin-left: 8px;
+}
+
+.top-menu-item {
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 0.75rem;
+  opacity: 0.8;
+  transition: all 0.2s;
+  height: 100%;
+}
+
+.top-menu-item:hover, .top-menu-item.active {
+  background-color: rgba(255, 255, 255, 0.1);
+  opacity: 1;
 }
 
 .app-container {
@@ -78,6 +132,7 @@ body {
   flex: 1;
   padding-top: 32px;
 }
+
 
 .sidebar {
   width: var(--sidebar-width);
@@ -545,3 +600,4 @@ textarea:focus {
   flex-direction: column;
   gap: 12px;
 }
+/* Window Controls */

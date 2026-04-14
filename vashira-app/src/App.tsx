@@ -160,20 +160,20 @@ const TopMenuBar = ({ onAction }: { onAction: (action: string) => void }) => {
   ];
 
   return (
-    <div className="glass" style={{ height: '32px', display: 'flex', alignItems: 'center', padding: '0 12px', gap: '20px', fontSize: '0.75rem', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.05)', position: 'relative', zIndex: 2000 }}>
+    <div className="top-menu">
        {menus.map(menu => (
-         <div key={menu.name} style={{ position: 'relative' }}>
-            <span 
-              style={{ cursor: 'pointer', opacity: activeMenu === menu.name ? 1 : 0.6 }}
+         <div key={menu.name} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <div 
+              className={`top-menu-item ${activeMenu === menu.name ? 'active' : ''}`}
               onMouseEnter={() => setActiveMenu(menu.name)}
               onClick={() => setActiveMenu(activeMenu === menu.name ? null : menu.name)}
             >
               {menu.name}
-            </span>
+            </div>
             {activeMenu === menu.name && (
               <div 
                 className="glass" 
-                style={{ position: 'absolute', top: '100%', left: 0, minWidth: '180px', padding: '8px 0', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', marginTop: '8px' }}
+                style={{ position: 'absolute', top: '100%', left: 0, minWidth: '180px', padding: '8px 0', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 9999 }}
                 onMouseLeave={() => setActiveMenu(null)}
               >
                  {menu.items.map(item => (
@@ -193,6 +193,7 @@ const TopMenuBar = ({ onAction }: { onAction: (action: string) => void }) => {
     </div>
   );
 };
+
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'library' | 'shared' | 'oracle' | 'scribe' | 'settings' | 'librarian'>('library');
@@ -485,16 +486,23 @@ export default function App() {
   };
 
   return (
-    <div className="app-container glass-bg" style={{ display: 'flex', height: '100vh', flexDirection: 'column', position: 'relative' }}>
-      <WindowControls />
-      <div className="resize-handle top" />
-      <div className="resize-handle bottom" />
-      <div className="resize-handle left" />
-      <div className="resize-handle right" />
-      
-      <TopMenuBar onAction={handleMenuAction} />
-      
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', position: 'relative' }}>
+      <div className="titlebar-container">
+        <div style={{ display: 'flex', height: '100%' }}>
+          {/* Logo in title bar could go here, but keeping it in the sidebar for branding if desired, or adding a mini version here */}
+          <TopMenuBar onAction={handleMenuAction} />
+        </div>
+        <WindowControls />
+      </div>
+
+      <div className="app-container glass-bg">
+        <div className="resize-handle top" />
+        <div className="resize-handle bottom" />
+        <div className="resize-handle left" />
+        <div className="resize-handle right" />
+        
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+
         {/* Sidebar Nav */}
       {/* Sidebar (Pane 1) */}
       <aside className="sidebar glass-nav" style={{ width: `${sidebarWidth}px`, height: '100%', display: 'flex', flexDirection: 'column', padding: '16px 8px', zIndex: 10 }}>
@@ -1074,6 +1082,7 @@ export default function App() {
           <span>{toast.message}</span>
         </div>
       )}
+      </div>
       </div>
     </div>
   );
