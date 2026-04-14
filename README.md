@@ -46,11 +46,19 @@ Vashira creates a **Mastery Vault** with **Decentralized P2P Synapse**, **AI RAG
    npm start
    ```
 
-### Building for Production
-To package the program for Windows or macOS:
-```bash
-npm run make
-```
+### 🛠️ Distribution & Building
+
+To generate your own installers and portable versions for your OS:
+
+#### Windows
+- **Installer (.exe)**: `npm run make` -> Generates to `out/make/squirrel.windows/x64/`
+- **Portable Version**: `npm run package` -> Assembles the standalone app in `out/Vashira-win32-x64/`
+
+#### macOS
+To build for macOS, you must be on a Mac (or using a CI/CD environment with macOS):
+- **Apple Silicon/Intel App**: `npm run make` -> Generates `.dmg` or `.zip` to `out/make/zip/darwin/`
+
+> **Note**: Building cross-platform installers (like a `.dmg` from Windows) typically requires specialized tooling or cloud runners. Standard `npm run make` targets your current OS.
 
 ## ⚖️ License & Philosophy
 The name **वशीर (Vaśīra)** is derived from Sanskrit, meaning *"The one who possesses mastery"*. Vashira is built on the principle that your research is your own dominion.

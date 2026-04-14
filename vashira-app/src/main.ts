@@ -214,8 +214,6 @@ app.on('ready', () => {
   ipcMain.handle('get-sync-log', () => getSyncLog());
   ipcMain.handle('get-sync-count', () => getSyncCount());
   
-  ipcMain.handle('get-peers', () => discoveryEngine.getOnlinePeers());
-  ipcMain.handle('get-discoveries', () => discoveryEngine.getLocalDiscoveries());
   ipcMain.handle('announce-metadata', (_, doi, title, itemId) => discoveryEngine.announceMetadata(doi, title, itemId));
   
   ipcMain.handle('import-pdf', async () => {
