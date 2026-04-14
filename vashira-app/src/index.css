@@ -338,7 +338,19 @@ body {
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   user-select: none;
-  transition: background 0.2s;
+  background-color: #0d0d12;
+  color: #e2e2e7;
+  overflow: hidden;
+}
+
+/* Frameless Resize Handles */
+.resize-handle { position: fixed; z-index: 9999; }
+.resize-handle.top { top: 0; left: 0; right: 0; height: 4px; cursor: ns-resize; -webkit-app-region: no-drag; }
+.resize-handle.bottom { bottom: 0; left: 0; right: 0; height: 4px; cursor: ns-resize; }
+.resize-handle.left { top: 0; bottom: 0; left: 0; width: 4px; cursor: ew-resize; }
+.resize-handle.right { top: 0; bottom: 0; right: 0; width: 4px; cursor: ew-resize; }
+
+.app-container {
 }
 
 .mastery-table th:hover {

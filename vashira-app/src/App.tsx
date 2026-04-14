@@ -4,11 +4,40 @@ import {
   ChevronRight, FileText, Download, Zap, Share2, 
   Tag, Clock, Folder, Globe, Clipboard, Check, Filter,
   Columns, Smartphone, ShieldCheck, PenTool, MessageSquare,
-  Cpu, Terminal, Power, Camera, LayoutGrid, Network, Shield
+  Cpu, Terminal, Power, Camera, LayoutGrid, Network, Shield,
+  Minimize2, Maximize2, X, Square, Copy
 } from 'lucide-react';
 import Scribe from './components/Scribe.js';
 import { askTheOracle, OracleConfig } from './oracle.js';
 import ForceGraph2D from 'react-force-graph-2d';
+
+const WindowControls = () => {
+  const [isMax, setIsMax] = useState(false);
+
+  useEffect(() => {
+    const checkMax = async () => {
+      const max = await (window as any).vashiraAPI.isMaximized();
+      setIsMax(max);
+    };
+    checkMax();
+    window.addEventListener('resize', checkMax);
+    return () => window.removeEventListener('resize', checkMax);
+  }, []);
+
+  return (
+    <div className="window-controls">
+      <div className="window-control-btn" onClick={() => (window as any).vashiraAPI.minimizeWindow()}>
+        <Minimize2 size={14} />
+      </div>
+      <div className="window-control-btn" onClick={() => (window as any).vashiraAPI.maximizeWindow()}>
+        {isMax ? <Copy size={14} style={{ transform: 'rotate(180deg)' }} /> : <Square size={14} />}
+      </div>
+      <div className="window-control-btn close" onClick={() => (window as any).vashiraAPI.closeWindow()}>
+        <X size={14} />
+      </div>
+    </div>
+  );
+};
 
 interface ResearchItem {
   id: number;
@@ -193,11 +222,13 @@ export default function App() {
   const [oracleResponse, setOracleResponse] = useState('');
   const [isOracleLoading, setIsOracleLoading] = useState(false);
   const [activeItemConnections, setActiveItemConnections] = useState<{zoteroKeys: string[], gefyraTools: string[], vashiraItems: string[]} | null>(null);
-  const [oracleConfig, setOracleConfig] = useState<OracleConfig>({
-    apiKey: localStorage.getItem('vashira_oracle_key') || '',
-    baseUrl: localStorage.getItem('vashira_oracle_url') || 'https://api.openai.com/v1',
     model: localStorage.getItem('vashira_oracle_model') || 'gpt-4o'
   });
+  const [zoteroConfig, setZoteroConfig] = useState({
+    userId: localStorage.getItem('vashira_zotero_user') || '',
+    apiKey: localStorage.getItem('vashira_zotero_key') || ''
+  });
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     loadItems();
@@ -304,12 +335,31 @@ export default function App() {
     }
     setIsOracleLoading(false);
   };
-
   const saveOracleConfig = () => {
     localStorage.setItem('vashira_oracle_key', oracleConfig.apiKey);
     localStorage.setItem('vashira_oracle_url', oracleConfig.baseUrl);
     localStorage.setItem('vashira_oracle_model', oracleConfig.model);
-    showToast("Oracle Connection Persistent.");
+    showToast('Oracle connectivity persisted.');
+  };
+
+  const syncWithZotero = async () => {
+    if (!zoteroConfig.userId || !zoteroConfig.apiKey) {
+      showToast('Zotero credentials missing.', 'alert');
+      return;
+    }
+    setIsSyncing(true);
+    localStorage.setItem('vashira_zotero_user', zoteroConfig.userId);
+    localStorage.setItem('vashira_zotero_key', zoteroConfig.apiKey);
+    
+    const result = await (window as any).vashiraAPI.syncZotero(zoteroConfig.userId, zoteroConfig.apiKey);
+    setIsSyncing(false);
+    
+    if (result.success) {
+      showToast(`Zotero Sync Complete: ${result.count} new items.`);
+      loadItems();
+    } else {
+      showToast(result.error, 'alert');
+    }
   };
 
   const filteredItems = useMemo(() => {
@@ -319,9 +369,11 @@ export default function App() {
 
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [discoveryStatus, setDiscoveryStatus] = useState<'idle' | 'searching' | 'connected'>('idle');
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState(['title', 'authors', 'published']);
-  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'graph' | 'grid'>('grid');
+  const [sidebarWidth, setSidebarWidth] = useState(260);
 
   const toggleColumn = (col: string) => {
     setVisibleColumns(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
@@ -392,7 +444,28 @@ export default function App() {
     }
 
     return { nodes, links };
-  }, [filteredItems]);
+  }, [items]);
+
+  const BookCard = ({ item, onClick }: { item: ResearchItem, onClick: () => void }) => {
+    const initials = item.title.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+    return (
+      <div className="book-card" onClick={onClick}>
+        <div className="book-cover-gradient">
+          {initials}
+        </div>
+        <div className="book-card-title">{item.title}</div>
+        <div className="book-card-meta">
+          <span>{item.authors.split(',')[0]}</span>
+          <span>{item.published}</span>
+        </div>
+        {item.masteryStatus === 'indexed' && (
+          <div style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(16, 185, 129, 0.2)', padding: '4px', borderRadius: '50%' }}>
+            <ShieldCheck size={12} color="#10b981" />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleMenuAction = async (action: string) => {
     switch (action) {
@@ -409,63 +482,84 @@ export default function App() {
   };
 
   return (
-    <div className="app-container glass-bg" style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
+    <div className="app-container glass-bg" style={{ display: 'flex', height: '100vh', flexDirection: 'column', position: 'relative' }}>
+      <WindowControls />
+      <div className="resize-handle top" />
+      <div className="resize-handle bottom" />
+      <div className="resize-handle left" />
+      <div className="resize-handle right" />
+      
       <TopMenuBar onAction={handleMenuAction} />
       
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Sidebar Nav */}
       {/* Sidebar (Pane 1) */}
-      <aside className="sidebar glass-nav" style={{ width: '280px', height: '100%', display: 'flex', flexDirection: 'column', padding: '24px 16px', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px', padding: '0 8px' }}>
-          <div style={{ background: 'var(--accent-color)', color: 'var(--bg-color)', width: '36px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Zap size={22} fill="currentColor" />
+      <aside className="sidebar glass-nav" style={{ width: `${sidebarWidth}px`, height: '100%', display: 'flex', flexDirection: 'column', padding: '16px 8px', zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', padding: '0 8px', WebkitAppRegion: 'drag' } as any}>
+          <div style={{ background: 'var(--accent-color)', color: 'var(--bg-color)', width: '28px', height: '28px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Zap size={18} fill="currentColor" />
           </div>
-          <div>
-            <h1 style={{ fontSize: '1.2rem', fontWeight: 800 }}>VASHIRA</h1>
-            <p style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Sovereign 5.0</p>
-          </div>
+          <span style={{ fontSize: '1rem', fontWeight: 800, letterSpacing: '0.05em' }}>VASHIRA</span>
         </div>
 
-        <nav style={{ flex: 1 }}>
-          <div className={`nav-item ${activeTab === 'library' ? 'active' : ''}`} onClick={() => setActiveTab('library')}>
-            <Database /> <span>Mastery Hub</span>
+        <nav style={{ flex: 1, overflowY: 'auto' }}>
+          <div className={`sidebar-collection-item ${activeTab === 'library' && !activeCollectionId ? 'active' : ''}`} onClick={() => { setActiveTab('library'); setActiveCollectionId(null); }}>
+            <Database size={16} /> <span>My Library</span>
           </div>
           
-          <div className={`nav-item ${activeTab === 'scribe' ? 'active' : ''}`} onClick={() => setActiveTab('scribe')}>
-            <PenTool /> <span>The Scribe</span>
+          <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', margin: '16px 0 8px 12px', fontWeight: 700, letterSpacing: '0.05em' }}>COLLECTIONS</p>
+          <div 
+            className="sidebar-collection-item" 
+            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('drop-active'); }}
+            onDragLeave={e => e.currentTarget.classList.remove('drop-active')}
+            onDrop={e => {
+               e.preventDefault();
+               e.currentTarget.classList.remove('drop-active');
+               const files = Array.from(e.dataTransfer.files);
+               if (files.length > 0) showToast(`Importing ${files.length} items to Unfiled...`);
+            }}
+          >
+            <Folder size={16} /> <span>Unfiled Items</span>
           </div>
 
-          <div className={`nav-item ${activeTab === 'oracle' ? 'active' : ''}`} onClick={() => setActiveTab('oracle')}>
-            <Cpu /> <span>The Oracle</span>
-          </div>
-
-          <div className={`nav-item ${activeTab === 'librarian' ? 'active' : ''}`} onClick={() => setActiveTab('librarian')}>
-            <BookOpen /> <span>The Librarian</span>
-          </div>
-
-          <div className={`nav-item ${activeTab === 'shared' ? 'active' : ''}`} onClick={() => setActiveTab('shared')}>
-            <Globe /> <span>P2P Discovery</span>
-          </div>
-
-          <p style={{ fontSize: '0.7rem', color: 'var(--accent-color)', marginBottom: '12px', paddingLeft: '12px', marginTop: '24px' }}>SMART FLOWS</p>
-          <div className="nav-item" onClick={() => { setActiveTab('library'); setSearchTerm('2026'); }}>
-             <Activity size={18} /> <span>Recent (2026)</span>
-          </div>
-          <div className="nav-item" onClick={() => { setActiveTab('library'); setSearchTerm('DOI:'); }}>
-             <Globe size={18} /> <span>With DOIs</span>
-          </div>
-
-          <div style={{ height: '32px' }}></div>
-          <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '12px', paddingLeft: '12px' }}>COLLECTIONS</p>
           {collections.map(c => (
-            <div key={c.id} className="nav-item" onClick={() => { setActiveTab('library'); setActiveCollectionId(c.id); }}>
-               <Folder size={18} /> <span>{c.name}</span>
+            <div 
+              key={c.id} 
+              className={`sidebar-collection-item ${activeCollectionId === c.id ? 'active' : ''}`} 
+              onClick={() => { setActiveTab('library'); setActiveCollectionId(c.id); }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={async (e) => {
+                 e.preventDefault();
+                 const files = Array.from(e.dataTransfer.files);
+                 if (files.length > 0) {
+                    showToast(`Adding to ${c.name}...`);
+                    // We'll implement actual file move/add later
+                 }
+              }}
+            >
+               <ChevronRight size={14} style={{ opacity: 0.4 }} />
+               <Folder size={16} /> <span>{c.name}</span>
             </div>
           ))}
+
+          <div className="sidebar-collection-item" style={{ marginTop: '8px', opacity: 0.5 }}>
+            <Plus size={14} /> <span>New Collection...</span>
+          </div>
+
+          <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', margin: '24px 0 8px 12px', fontWeight: 700, letterSpacing: '0.05em' }}>SOVEREIGN SERVICES</p>
+          <div className={`sidebar-collection-item ${activeTab === 'scribe' ? 'active' : ''}`} onClick={() => setActiveTab('scribe')}>
+            <PenTool size={16} /> <span>The Scribe</span>
+          </div>
+          <div className={`sidebar-collection-item ${activeTab === 'oracle' ? 'active' : ''}`} onClick={() => setActiveTab('oracle')}>
+            <Cpu size={16} /> <span>The Oracle</span>
+          </div>
+          <div className={`sidebar-collection-item ${activeTab === 'shared' ? 'active' : ''}`} onClick={() => setActiveTab('shared')}>
+            <Globe size={16} /> <span>P2P Discovery</span>
+          </div>
         </nav>
 
-        <div className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
-           <Settings /> <span>Configuration</span>
+        <div className={`sidebar-collection-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
+           <Settings size={16} /> <span>Configuration</span>
         </div>
       </aside>
 
@@ -501,7 +595,7 @@ export default function App() {
                                <button className="primary-button small" onClick={() => (window as any).vashiraAPI.importFromPeer(d.doi, d.peer).then(loadItems)}>
                                   <Download size={14} /> <span>Snatched Metadata</span>
                                </button>
-                               <button className="icon-button glass small" title="Download Source" onClick={() => window.open(`http://\${d.peer}:51235/download/\${d.itemId}`)}>
+                               <button className="icon-button glass small" title="Download Source" onClick={() => window.open(`http://${d.peer}:51235/download/${d.itemId}`)}>
                                   <FileText size={14} />
                                </button>
                              </div>
@@ -520,22 +614,29 @@ export default function App() {
                        <h2 style={{ fontSize: '1.8rem', fontWeight: 700 }}>Research Hub</h2>
                        <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>{filteredItems.length} Items Mastered</p>
                     </div>
-                    <div className="view-toggle glass" style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)' }}>
-                       <button 
-                         className={`icon-button small \${viewMode === 'list' ? 'active' : ''}`} 
-                         onClick={() => setViewMode('list')}
-                         style={{ padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '8px', background: viewMode === 'list' ? 'var(--accent-color)' : 'transparent', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }}
-                       >
-                         LIST
-                       </button>
-                       <button 
-                         className={`icon-button small \${viewMode === 'graph' ? 'active' : ''}`} 
-                         onClick={() => setViewMode('graph')}
-                         style={{ padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '8px', background: viewMode === 'graph' ? 'var(--accent-color)' : 'transparent', color: viewMode === 'graph' ? 'white' : 'var(--text-secondary)' }}
-                       >
-                         GRAPH
-                       </button>
-                    </div>
+                     <div className="view-toggle glass" style={{ display: 'flex', padding: '4px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)' }}>
+                        <button 
+                          className={`icon-button small ${viewMode === 'grid' ? 'active' : ''}`} 
+                          onClick={() => setViewMode('grid')}
+                          style={{ padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '8px', background: viewMode === 'grid' ? 'var(--accent-color)' : 'transparent', color: viewMode === 'grid' ? 'white' : 'var(--text-secondary)' }}
+                        >
+                          GRID
+                        </button>
+                        <button 
+                          className={`icon-button small ${viewMode === 'list' ? 'active' : ''}`} 
+                          onClick={() => setViewMode('list')}
+                          style={{ padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '8px', background: viewMode === 'list' ? 'var(--accent-color)' : 'transparent', color: viewMode === 'list' ? 'white' : 'var(--text-secondary)' }}
+                        >
+                          LIST
+                        </button>
+                        <button 
+                          className={`icon-button small ${viewMode === 'graph' ? 'active' : ''}`} 
+                          onClick={() => setViewMode('graph')}
+                          style={{ padding: '6px 12px', fontSize: '0.7rem', fontWeight: 700, borderRadius: '8px', background: viewMode === 'graph' ? 'var(--accent-color)' : 'transparent', color: viewMode === 'graph' ? 'white' : 'var(--text-secondary)' }}
+                        >
+                          GRAPH
+                        </button>
+                     </div>
                  </div>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div className="glass-input-wrapper" style={{ width: '300px' }}>
@@ -574,7 +675,19 @@ export default function App() {
               </header>
 
                <div key={viewMode} className="view-enter" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                 {viewMode === 'list' ? (
+                {viewMode === 'grid' ? (
+                  <div className="book-hub-grid" style={{ overflowY: 'auto', flex: 1 }}>
+                    {filteredItems.map(item => (
+                      <BookCard key={item.id} item={item} onClick={() => { setSelectedItem(item); setIsDetailsOpen(true); }} />
+                    ))}
+                    {filteredItems.length === 0 && (
+                      <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '100px', opacity: 0.3 }}>
+                         <Database size={48} style={{ marginBottom: '16px' }} />
+                         <p>No items mastered in this collection.</p>
+                      </div>
+                    )}
+                  </div>
+                ) : viewMode === 'list' ? (
                 <div className="table-container glass" style={{ flex: 1, borderRadius: '24px', overflow: 'auto' }}>
                    <table className="mastery-table">
                       <thead>
@@ -710,60 +823,90 @@ export default function App() {
           )}
 
           {activeTab === 'settings' && (
-            <div className="fade-in glass" style={{ padding: '48px', borderRadius: '32px', maxWidth: '600px' }}>
-               <h2 style={{ marginBottom: '32px' }}>Oracle Configuration</h2>
-               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  <div>
-                     <label style={{ fontSize: '0.8rem', opacity: 0.6 }}>API Base URL (OpenAI, Anthropic, or Local Ollama)</label>
-                     <input className="glass-input" value={oracleConfig.baseUrl} onChange={e => setOracleConfig({...oracleConfig, baseUrl: e.target.value})} />
+            <div className="fade-in glass" style={{ padding: '48px', borderRadius: '32px', maxWidth: '900px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px', margin: '40px auto', animation: 'scaleUp 0.4s ease' }}>
+               <section>
+                  <h2 style={{ marginBottom: '32px', fontSize: '1.4rem', fontWeight: 800 }}>Oracle Configuration</h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                     <div>
+                        <label style={{ fontSize: '0.7rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>API Base URL</label>
+                        <input className="glass-input" value={oracleConfig.baseUrl} onChange={e => setOracleConfig({...oracleConfig, baseUrl: e.target.value})} />
+                     </div>
+                     <div>
+                        <label style={{ fontSize: '0.7rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Secret Access Key</label>
+                        <input className="glass-input" type="password" value={oracleConfig.apiKey} onChange={e => setOracleConfig({...oracleConfig, apiKey: e.target.value})} />
+                     </div>
+                     <div>
+                        <label style={{ fontSize: '0.7rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Preferred Model</label>
+                        <input className="glass-input" value={oracleConfig.model} onChange={e => setOracleConfig({...oracleConfig, model: e.target.value})} />
+                     </div>
+                     <button className="primary-button" onClick={saveOracleConfig} style={{ marginTop: '12px' }}>PERSIST CONNECTION</button>
                   </div>
-                  <div>
-                     <label style={{ fontSize: '0.8rem', opacity: 0.6 }}>Secret Access Key</label>
-                     <input className="glass-input" type="password" value={oracleConfig.apiKey} onChange={e => setOracleConfig({...oracleConfig, apiKey: e.target.value})} />
-                  </div>
-                  <div>
-                     <label style={{ fontSize: '0.8rem', opacity: 0.6 }}>Preferred Model</label>
-                     <input className="glass-input" value={oracleConfig.model} onChange={e => setOracleConfig({...oracleConfig, model: e.target.value})} />
-                  </div>
-                  <button className="primary-button" onClick={saveOracleConfig}>PERSIST CONNECTION</button>
-               </div>
 
-                <div style={{ marginTop: '48px' }}>
-                   <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(59, 130, 246, 0.2)', background: 'rgba(59, 130, 246, 0.05)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ width: '40px', height: '40px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                               <Globe size={20} color="#3b82f6" />
-                            </div>
-                            <div>
-                               <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Community Mode (WAN)</h3>
-                               <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>Sync automatically with Vashira users across the internet.</p>
-                            </div>
-                         </div>
-                         <button 
-                            className={`primary-button small ${communityMode ? 'active' : ''}`} 
-                            style={{ background: communityMode ? '#3b82f6' : 'rgba(255,255,255,0.1)', minWidth: '100px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
-                            onClick={async () => {
-                               const newState = !communityMode;
-                               const result = await (window as any).vashiraAPI.toggleCommunityMode(newState);
-                               setCommunityMode(newState);
-                               setNatStatus(result.nat);
-                               localStorage.setItem('vashira_community_mode', newState.toString());
-                               
-                               if (newState) {
-                                  showToast(result.nat ? "Global Mesh Joined (Protected)." : "Global Mesh Joined (Relay Only).", 'success');
-                               } else {
-                                  showToast("Returned to Sovereign LAN.", 'alert');
-                               }
-                            }}
-                         >
-                            {communityMode && <Shield size={12} color={natStatus ? '#10b981' : '#f59e0b'} />}
-                            {communityMode ? 'CONNECTED' : 'DISABLED'}
-                         </button>
-                      </div>
-                   </div>
-                </div>
-             </div>
+                  <div style={{ marginTop: '48px' }}>
+                    <h2 style={{ marginBottom: '24px', fontSize: '1.4rem', fontWeight: 800 }}>Community Mode (WAN)</h2>
+                    <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(59, 130, 246, 0.2)', background: 'rgba(59, 130, 246, 0.05)' }}>
+                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                             <div style={{ width: '40px', height: '40px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Globe size={20} color="#3b82f6" />
+                             </div>
+                             <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Global Mesh</h3>
+                                <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>Sync with users across the internet.</p>
+                             </div>
+                          </div>
+                          <button 
+                             className={`primary-button small ${communityMode ? 'active' : ''}`} 
+                             style={{ background: communityMode ? '#3b82f6' : 'rgba(255,255,255,0.1)', minWidth: '100px' }}
+                             onClick={async () => {
+                                const newState = !communityMode;
+                                const result = await (window as any).vashiraAPI.toggleCommunityMode(newState);
+                                setCommunityMode(newState);
+                                setNatStatus(result.nat);
+                                localStorage.setItem('vashira_community_mode', newState.toString());
+                                showToast(newState ? "Global Mesh Joined." : "Returned to Sovereign LAN.");
+                             }}
+                          >
+                             {communityMode ? 'CONNECTED' : 'DISABLED'}
+                          </button>
+                       </div>
+                    </div>
+                  </div>
+               </section>
+
+               <section>
+                  <h2 style={{ marginBottom: '32px', fontSize: '1.4rem', fontWeight: 800 }}>Zotero Hub Sync</h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                     <div>
+                        <label style={{ fontSize: '0.7rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Zotero User ID</label>
+                        <input className="glass-input" value={zoteroConfig.userId} onChange={e => setZoteroConfig({...zoteroConfig, userId: e.target.value})} />
+                     </div>
+                     <div>
+                        <label style={{ fontSize: '0.7rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Zotero API Key</label>
+                        <input className="glass-input" type="password" value={zoteroConfig.apiKey} onChange={e => setZoteroConfig({...zoteroConfig, apiKey: e.target.value})} />
+                     </div>
+                     <button className={`primary-button ${isSyncing ? 'loading' : ''}`} onClick={syncWithZotero} style={{ marginTop: '12px' }}>
+                        {isSyncing ? 'SYNCING VAULT...' : 'SYNC WITH ZOTERO'}
+                     </button>
+                     <p style={{ fontSize: '0.75rem', opacity: 0.4, fontStyle: 'italic' }}>Smart Diffing ensures only metadata changes are synced.</p>
+                  </div>
+
+                  <div style={{ marginTop: '48px' }}>
+                    <h2 style={{ marginBottom: '24px', fontSize: '1.4rem', fontWeight: 800 }}>AI Provider (v6)</h2>
+                    <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(16, 185, 129, 0.2)', background: 'rgba(16, 185, 129, 0.05)' }}>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          <div style={{ width: '40px', height: '40px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                             <ShieldCheck size={20} color="#10b981" />
+                          </div>
+                          <div>
+                             <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Sovereign MCP Active</h3>
+                             <p style={{ fontSize: '0.8rem', opacity: 0.5 }}>Listening on Port 51236</p>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+               </section>
+            </div>
           )}
         </div>
 

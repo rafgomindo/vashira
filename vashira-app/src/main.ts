@@ -42,7 +42,7 @@ import { CommunityRelay } from './relay-service.js';
 import { NatService } from './nat-service.js';
 import { ocrService } from './ocr-service.js';
 import { scrapeDocx } from './scrapper.js';
-// import { discoveryEngine as disc } from './discovery_api.js'; // Removed invalid import
+import { fetchZoteroLibrary, mapZoteroToVashira } from './zotero-service.js';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -423,6 +423,81 @@ app.on('ready', () => {
       console.error('[Main] Graphify Error:', e);
       return { success: false, error: e.message };
     }
+  });
+  
+  // Window Control Handlers
+  ipcMain.on('window-minimize', () => {
+    mainWindow?.minimize();
+  });
+  
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow?.unmaximize();
+    } else {
+      mainWindow?.maximize();
+    }
+  });
+  
+  ipcMain.on('window-close', () => {
+    mainWindow?.close();
+  });
+  
+  ipcMain.handle('is-window-maximized', () => {
+    return mainWindow?.isMaximized();
+  });
+
+  ipcMain.handle('sync-zotero', async (_, userId, apiKey) => {
+    try {
+      const zItems = await fetchZoteroLibrary(userId, apiKey);
+      let syncCount = 0;
+      for (const zItem of zItems) {
+        // Simple duplicate check by title or DOI
+        const existing = getItems().find(i => i.title === zItem.data.title || (i.doi && i.doi === zItem.data.doi));
+        if (!existing) {
+          const vItem = mapZoteroToVashira(zItem);
+          addItem(vItem);
+          syncCount++;
+        }
+      }
+      return { success: true, count: syncCount };
+    } catch (e: any) {
+      console.error('[Main] Zotero Sync Error:', e);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Vashira AI Provider / MCP Server (6.0)
+  const providerServer = http.createServer(async (req, res) => {
+    // Enable CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') { res.end(); return; }
+
+    if (req.url === '/v1/chat/completions') {
+       // Mock OpenAI endpoint that uses Vashira context
+       // For now, it returns a prompt that suggests using the Vashira App
+       res.writeHead(200, { 'Content-Type': 'application/json' });
+       res.end(JSON.stringify({
+         choices: [{ message: { content: "Vashira AI Provider is active. Connect with MCP for deep research." } }]
+       }));
+    } else if (req.url === '/mcp') {
+       // MCP (Model Context Protocol) JSON-RPC endpoint
+       res.writeHead(200, { 'Content-Type': 'application/json' });
+       res.end(JSON.stringify({ 
+         name: "Vashira Mastery", 
+         version: "5.0", 
+         capabilities: ["resources", "tools"] 
+       }));
+    } else {
+       res.writeHead(404);
+       res.end();
+    }
+  });
+
+  providerServer.listen(51236, () => {
+    console.log('[Main] Vashira AI Provider active on port 51236');
   });
 
   createWindow();

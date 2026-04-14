@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   },
   updateItem: (id: number, fields: any) => ipcRenderer.invoke('update-item', id, fields),
   toggleCommunityMode: (enabled: boolean) => ipcRenderer.invoke('toggle-community-mode', enabled),
+  syncZotero: (userId: string, apiKey: string) => ipcRenderer.invoke('sync-zotero', userId, apiKey),
+  
+  // Window Controls
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  maximizeWindow: () => ipcRenderer.send('window-maximize'),
+  closeWindow: () => ipcRenderer.send('window-close'),
+  isMaximized: () => ipcRenderer.invoke('is-window-maximized'),
   
   // Vashira 5.0: Web-Snatcher Listener
   onSnatchedItem: (callback: (item: any) => void) => {
