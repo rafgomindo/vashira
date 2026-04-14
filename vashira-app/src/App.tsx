@@ -222,6 +222,9 @@ export default function App() {
   const [oracleResponse, setOracleResponse] = useState('');
   const [isOracleLoading, setIsOracleLoading] = useState(false);
   const [activeItemConnections, setActiveItemConnections] = useState<{zoteroKeys: string[], gefyraTools: string[], vashiraItems: string[]} | null>(null);
+  const [oracleConfig, setOracleConfig] = useState<OracleConfig>({
+    apiKey: localStorage.getItem('vashira_oracle_key') || '',
+    baseUrl: localStorage.getItem('vashira_oracle_url') || 'https://api.openai.com/v1',
     model: localStorage.getItem('vashira_oracle_model') || 'gpt-4o'
   });
   const [zoteroConfig, setZoteroConfig] = useState({
