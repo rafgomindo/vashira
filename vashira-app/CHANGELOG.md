@@ -1,8 +1,18 @@
 # 📜 Vashira Mastery: The Historical Record
 
-This document tracks the sovereign evolution of Vashira from its inception to the Omni-Mastery Horizon (v10.0.0).
+This document tracks the sovereign evolution of Vashira from its inception to the Working Build (v10.1.0).
 
-## [v10.0.0] - The Omni-Mastery Horizon (Current)
+## [v10.1.0] - The Working Build (Current)
+- **Renderer Reconciliation**: Fixed a wide mismatch between the renderer's `window.vashiraAPI` calls and what `preload.ts` actually exposed — including a call on every launch to a method that didn't exist, which crashed React's effect phase with no boundary to catch it. Library loading, PDF import, item selection, and the custom window controls were all silently broken as a result.
+- **Deep Search Repair**: Fixed a schema mismatch (`search_index.fullText` vs a nonexistent `content` column) that silently broke full-text indexing on every single PDF import.
+- **Consensus Hardening**: The Consensus Registry now tracks distinct peers per vote instead of raw exchange count — one peer answering repeatedly could previously inflate a wrong title into apparent consensus. DOI'd items now defer to CrossRef instead of peer opinion. Also fixed the P2P metadata-request listener, which was bound to an event name (`discovery`) that was never actually emitted.
+- **Collections & Tags**: Shipped the UI for the long-dormant backend — sidebar filtering by collection or tag, tag chips with add/remove, and a collection-assignment picker on the item record.
+- **BibTeX/RIS & Citation Styles**: Added library-wide BibTeX/RIS import and BibTeX export, plus an offline APA/IEEE/MLA citation style picker (IEEE/MLA styles existed in code but were never wired up).
+- **Sovereign Polish**: Refined the glass/border/shadow system app-wide and elevated the Peer Consensus / CrossRef verification panel to its own surface.
+- **Guided Tour**: Replaced the old placeholder "welcome item" with a real first-run tour covering every screen and every working control, replayable from Settings.
+- **Portable Distribution**: Established the portable ZIP as the real distribution path (the Squirrel installer needs a code-signing certificate we don't have yet) and automated building it via GitHub Actions on every version tag push.
+
+## [v10.0.0] - The Omni-Mastery Horizon
 - **Universal Sentinel**: Added support for Opera, Opera GX, Safari, and Microsoft Office.
 - **Mastery Build**: Finalized production EXE with "Vashira Sentinel" branding.
 - **Deep Reader**: Integrated robust annotation layer for PDFs.

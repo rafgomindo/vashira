@@ -7,11 +7,16 @@ interface ScribeProps {
 }
 
 export default function Scribe({ hubItems, onShowToast }: ScribeProps) {
-  const [content, setContent] = useState('# New Research Insight\n\nStart writing your next breakthrough...');
+  const [content, setContent] = useState(() => localStorage.getItem('vashira_scribe_draft') || '# New Research Insight\n\nStart writing your next breakthrough...');
   const [showCitationPicker, setShowCitationPicker] = useState(false);
   const [citationSearch, setCitationSearch] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [cursorPos, setCursorPos] = useState(0);
+
+  const persistDraft = () => {
+    localStorage.setItem('vashira_scribe_draft', content);
+    onShowToast('Draft persisted.');
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -39,8 +44,8 @@ export default function Scribe({ hubItems, onShowToast }: ScribeProps) {
     const lastAtIdx = content.lastIndexOf('@', cursorPos - 1);
     const before = content.substring(0, lastAtIdx);
     const after = content.substring(cursorPos);
-    const citeKey = `[@\${item.authors.split(',')[0].trim()}\${item.published}]`;
-    const newContent = `\${before}\${citeKey} \${after}`;
+    const citeKey = `[@${item.authors.split(',')[0].trim()}${item.published}]`;
+    const newContent = `${before}${citeKey} ${after}`;
     setContent(newContent);
     setShowCitationPicker(false);
     onShowToast("Citation Secured.");
@@ -62,13 +67,13 @@ export default function Scribe({ hubItems, onShowToast }: ScribeProps) {
 
   return (
     <div className="scribe-container fade-in" style={{ display: 'flex', flex: 1, gap: '20px', height: '100%', overflow: 'hidden' }}>
-      <div className="glass scribe-editor" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', borderRadius: '24px', position: 'relative' }}>
+      <div data-tour="scribe-editor-area" className="glass scribe-editor" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px', borderRadius: '24px', position: 'relative' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Type size={18} color="var(--accent-color)" />
               <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>THE SCRIBE</span>
            </div>
-           <button className="primary-button" style={{ padding: '6px 12px', fontSize: '0.7rem' }}>
+           <button data-tour="scribe-persist" className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.7rem' }} onClick={persistDraft}>
               <Save size={14} /> PERSIST
            </button>
         </header>
@@ -113,7 +118,7 @@ export default function Scribe({ hubItems, onShowToast }: ScribeProps) {
         )}
       </div>
 
-      <div className="glass scribe-preview" style={{ flex: 1, padding: '32px', borderRadius: '24px', overflowY: 'auto' }}>
+      <div data-tour="scribe-preview-area" className="glass scribe-preview" style={{ flex: 1, padding: '32px', borderRadius: '24px', overflowY: 'auto' }}>
          <header style={{ marginBottom: '24px', opacity: 0.5 }}>
             <span style={{ fontSize: '0.7rem', fontWeight: 800 }}>LIVE PREVIEW</span>
          </header>

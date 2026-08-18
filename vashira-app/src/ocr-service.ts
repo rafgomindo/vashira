@@ -39,7 +39,7 @@ export class OCRService {
     // For now, we use a simplified approach or suggest UI scanning.
     // However, for Mastery 9.0, we want it as automated as possible.
     
-    console.log(`[OCR] Starting Mastery Scan for \${maxPages} pages...`);
+    console.log(`[OCR] Starting Mastery Scan for ${maxPages} pages...`);
     // Placeholder for page extraction logic (requires canvas or offscreen renderer)
     // To keep it sovereign and stable, we'll implement the image extraction loop here.
     return ["Mastery Scan Content Placeholder"]; 

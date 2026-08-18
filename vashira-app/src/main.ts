@@ -22,8 +22,11 @@ import {
   getSyncLog,
   getSyncCount,
   getAllTags,
+  addTag,
   addTagToItem,
   removeTagFromItem,
+  getTagsForItem,
+  getItemsByTag,
   searchDeep,
   upsertConsensus,
   getConsensus,
@@ -35,7 +38,8 @@ import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISB
 import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser.js';
 import { discoveryEngine } from './discovery.js';
 import { captureSnapshot } from './archiver.js';
-import { CitationEngine, MINIMAL_APA_STYLE } from './citation.js';
+import { CitationEngine, MINIMAL_APA_STYLE, MINIMAL_IEEE_STYLE, MINIMAL_MLA_STYLE } from './citation.js';
+import { askTheOracle } from './oracle.js';
 import { translatorService } from './translator-service.js';
 import { indexItemTask } from './indexer.js';
 import { CommunityRelay } from './relay-service.js';
@@ -83,7 +87,15 @@ app.on('ready', () => {
   ipcMain.handle('get-notes', (_, itemId) => getNotes(itemId));
   ipcMain.handle('add-note', (_, itemId, content) => addNote(itemId, content));
   ipcMain.handle('fetch-metadata', (_, doi) => fetchMetadataFromDOI(doi));
-  ipcMain.handle('update-item', (_, id, fields) => updateItem(id, fields));
+  ipcMain.handle('update-item', (_, id, fields) => {
+    try {
+      updateItem(id, fields);
+      return { success: true };
+    } catch (e: any) {
+      console.error('[Main] Update Item Error:', e);
+      return { success: false, error: e.message };
+    }
+  });
   
   let relay: CommunityRelay | null = null;
   let nat: NatService | null = null;
@@ -191,12 +203,20 @@ app.on('ready', () => {
   ipcMain.handle('get-annotations', (_, itemId) => getAnnotations(itemId));
   ipcMain.handle('add-annotation', (_, itemId, type, content, position, color) => addAnnotation(itemId, type, content, position, color));
 
+  // Guaranteed-offline styles — sovereign/offline-first means citing shouldn't
+  // depend on reaching GitHub. Anything else falls through to the live CSL repo.
+  const BUILTIN_STYLES: Record<string, string> = {
+    apa: MINIMAL_APA_STYLE,
+    ieee: MINIMAL_IEEE_STYLE,
+    mla: MINIMAL_MLA_STYLE,
+  };
+
   ipcMain.handle('generate-citation', async (_, itemId, styleName = 'apa') => {
     const item = getItemById(itemId);
     if (!item) return null;
-    
+
     try {
-      const styleXml = await styleStore.getStyleXml(styleName);
+      const styleXml = BUILTIN_STYLES[styleName] || await styleStore.getStyleXml(styleName);
       const engine = new CitationEngine([item], styleXml);
       return engine.formatCitation(itemId);
     } catch (e) {
@@ -222,7 +242,7 @@ app.on('ready', () => {
       filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
     });
 
-    if (canceled || filePaths.length === 0) return null;
+    if (canceled || filePaths.length === 0) return { success: false, canceled: true };
 
     const sourcePath = filePaths[0];
     const fileName = path.basename(sourcePath);
@@ -275,10 +295,10 @@ app.on('ready', () => {
         await indexItemTask({ ...indexedItem, id: itemId });
       }, 100);
 
-      return { ...indexedItem, id: itemId };
+      return { success: true, item: { ...indexedItem, id: itemId } };
     } catch (error: any) {
       console.error('PDF Import error:', error);
-      throw new Error(`Mastery interrupted: ${error.message}`);
+      return { success: false, error: `Mastery interrupted: ${error.message}` };
     }
   });
 
@@ -306,7 +326,14 @@ app.on('ready', () => {
     });
     if (canceled || filePaths.length === 0) return null;
     const content = fs.readFileSync(filePaths[0], 'utf8');
-    return parseRIS(content);
+    const items = parseRIS(content);
+
+    const results = [];
+    for (const item of items) {
+       const itemId = await addItem(item);
+       results.push({ ...item, id: itemId });
+    }
+    return results;
   });
 
   ipcMain.handle('read-file', async (_, filePath) => {
@@ -315,9 +342,16 @@ app.on('ready', () => {
   });
 
   ipcMain.handle('get-all-tags', () => getAllTags());
+  ipcMain.handle('create-tag', (_, name) => addTag(name));
   ipcMain.handle('add-tag-to-item', (_, itemId, tagId) => addTagToItem(itemId, tagId));
   ipcMain.handle('remove-tag-from-item', (_, itemId, tagId) => removeTagFromItem(itemId, tagId));
+  ipcMain.handle('get-tags-for-item', (_, itemId) => getTagsForItem(itemId));
+  ipcMain.handle('get-items-by-tag', (_, tagId) => getItemsByTag(tagId));
   ipcMain.handle('search-deep', (_, query) => searchDeep(query));
+  ipcMain.handle('ask-oracle', async (_, query: string, config: any) => {
+    // Runs in-process (not through IPC) since we're already on the main side.
+    return askTheOracle(query, config, { searchDeep: async (q: string) => searchDeep(q) });
+  });
   ipcMain.handle('index-item', (_, item) => indexItemTask(item));
   
   // For global search, we keep the dynamic require for OpenAlex api if it's separate
@@ -374,36 +408,51 @@ app.on('ready', () => {
     return false;
   });
 
-  discoveryEngine.on('metadata-response', (metadata: any) => {
+  discoveryEngine.on('metadata-response', ({ metadata, voterId }: { metadata: any; voterId: string }) => {
     if (metadata) {
       const identifier = metadata.doi || metadata.fileHash;
-      if (identifier) upsertConsensus(identifier, metadata);
+      if (identifier) upsertConsensus(identifier, metadata, voterId);
     }
   });
 
-  discoveryEngine.on('discovery', async ({ doi, peer }: { doi: string; peer: any }) => {
+  discoveryEngine.on('metadata-request', async ({ doi, peer }: { doi: string; peer: any }) => {
     const allItems = await getItems();
     const item = allItems.find((i: any) => i.doi === doi || i.fileHash === doi);
     if (item) discoveryEngine.sendMetadata(item, peer);
   });
 
   ipcMain.handle('import-from-peer', async (_, doi, peerIp) => {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        discoveryEngine.off('metadata-response', handleResponse);
-        reject(new Error("Peer mastery timed out."));
-      }, 5000);
-
-      const handleResponse = (metadata: any) => {
-        if (metadata && (metadata.doi === doi || metadata.fileHash === doi)) {
-          clearTimeout(timeout);
+    try {
+      const metadata: any = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
           discoveryEngine.off('metadata-response', handleResponse);
-          resolve(metadata);
-        }
-      };
-      discoveryEngine.on('metadata-response', handleResponse);
-      discoveryEngine.requestMetadata(doi, peerIp);
-    });
+          reject(new Error('Peer mastery timed out.'));
+        }, 5000);
+
+        const handleResponse = ({ metadata: m }: { metadata: any; voterId: string }) => {
+          if (m && (m.doi === doi || m.fileHash === doi)) {
+            clearTimeout(timeout);
+            discoveryEngine.off('metadata-response', handleResponse);
+            resolve(m);
+          }
+        };
+        discoveryEngine.on('metadata-response', handleResponse);
+        discoveryEngine.requestMetadata(doi, peerIp);
+      });
+
+      // The peer's filePath/snapshotPath point at files on THEIR machine, not ours.
+      const { filePath, snapshotPath, id, ...remoteFields } = metadata;
+      const existing = getItems().find((i: any) =>
+        (remoteFields.doi && i.doi === remoteFields.doi) ||
+        (remoteFields.fileHash && i.fileHash === remoteFields.fileHash)
+      );
+      if (existing) return { success: true, item: existing, alreadyOwned: true };
+
+      const itemId = await addItem(remoteFields);
+      return { success: true, item: { ...remoteFields, id: itemId } };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
   });
 
   ipcMain.handle('get-consensus', (_, identifier) => getConsensus(identifier));

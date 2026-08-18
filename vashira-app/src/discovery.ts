@@ -31,11 +31,10 @@ class PeerDiscovery extends EventEmitter {
           this.peers.add(`MasterNode@${rinfo.address}`);
         } else if (data.type === 'MASTERY_ANNOUNCE') {
           console.log(`[P2P] Insight from ${rinfo.address}: ${data.title}`);
-          const identifier = data.doi;
-          if (identifier) {
-             require('./database').upsertConsensus(identifier, { title: data.title, authors: 'Unknown', published: 'N/A' });
-          }
-          const newDiscovery = { 
+          // Announcements only carry a title, not real metadata — voting on a placeholder
+          // ('Unknown' author, 'N/A' date) would just pollute consensus_registry with junk
+          // that competes against real records fetched via REQUEST_METADATA/RESPONSE_METADATA.
+          const newDiscovery = {
             doi: data.doi, 
             title: data.title, 
             itemId: data.itemId,
@@ -48,7 +47,9 @@ class PeerDiscovery extends EventEmitter {
         } else if (data.type === 'REQUEST_METADATA') {
           this.emit('metadata-request', { doi: data.doi, peer: rinfo.address });
         } else if (data.type === 'RESPONSE_METADATA') {
-          this.emit('metadata-response', data.metadata);
+          // Identify the vote by IP, not the sender's self-reported nodeId — nodeId is
+          // a random string regenerated every launch, so it can't anchor trust across sessions.
+          this.emit('metadata-response', { metadata: data.metadata, voterId: rinfo.address });
         }
       } catch (e) { /* Non-Vashira traffic */ }
     });

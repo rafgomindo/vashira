@@ -42,7 +42,7 @@ export const MINIMAL_APA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
   </bibliography>
 </style>`;
 
-const MINIMAL_IEEE_STYLE = `<?xml version="1.0" encoding="utf-8"?>
+export const MINIMAL_IEEE_STYLE = `<?xml version="1.0" encoding="utf-8"?>
 <style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" demote-non-dropping-particle="never">
   <info><title>Vashira IEEE</title><id>v-ieee</id><updated>2026-03-26T00:00:00+00:00</updated></info>
   <layout prefix="[" suffix="]" delimiter=", ">
@@ -58,7 +58,7 @@ const MINIMAL_IEEE_STYLE = `<?xml version="1.0" encoding="utf-8"?>
   </bibliography>
 </style>`;
 
-const MINIMAL_MLA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
+export const MINIMAL_MLA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
 <style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
   <info><title>Vashira MLA</title><id>v-mla</id><updated>2026-03-26T00:00:00+00:00</updated></info>
   <bibliography>

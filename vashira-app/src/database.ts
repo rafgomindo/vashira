@@ -124,11 +124,33 @@ export function initDatabase() {
       title TEXT,
       authors TEXT,
       published TEXT,
-      votes INTEGER DEFAULT 1,
+      voterId TEXT NOT NULL DEFAULT 'unknown',
       lastSeen DATETIME DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY(identifier, title, authors)
+      PRIMARY KEY(identifier, title, authors, voterId)
     );
   `);
+
+  // [VASHIRA 10.1] Consensus Hardening: the old schema had no voterId, so a single
+  // peer answering the same request repeatedly could inflate "votes" indefinitely.
+  // Rebuild onto a per-voter primary key so a candidate's strength is distinct
+  // peers, not exchanges answered. Old tallies aren't trustworthy under the new
+  // meaning, so this is a clean rebuild rather than a data-preserving migration.
+  const consensusColumns = db.prepare("PRAGMA table_info(consensus_registry)").all();
+  if (!consensusColumns.some((c: any) => c.name === 'voterId')) {
+    db.exec(`DROP TABLE consensus_registry;`);
+    db.exec(`
+      CREATE TABLE consensus_registry (
+        identifier TEXT,
+        title TEXT,
+        authors TEXT,
+        published TEXT,
+        voterId TEXT NOT NULL DEFAULT 'unknown',
+        lastSeen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(identifier, title, authors, voterId)
+      );
+    `);
+    console.log('[Schema Guard] Migrated consensus_registry to per-peer voting schema.');
+  }
 
   // [VASHIRA 4.0] Sovereign Schema Guard: Proactive Migration
   const columns = db.prepare("PRAGMA table_info(items)").all();
@@ -166,30 +188,6 @@ export function initDatabase() {
     }
   });
 
-  // [VASHIRA 4.0] Seed Welcome Data
-  const itemCheck = db.prepare('SELECT COUNT(*) as count FROM items').get();
-  if (itemCheck && itemCheck.count === 0) {
-    db.prepare('INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)').run('Mastery', '#a78bfa');
-    const tag = db.prepare('SELECT id FROM tags WHERE name = ?').get('Mastery');
-    const welcomeTagId = tag?.id;
-
-    const itemId = db.prepare(`
-      INSERT INTO items (title, itemType, authors, published, abstract, extra)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      'Vashira Sovereign Mastery: A New Era of Research',
-      'journalArticle',
-      'Rafael Domingo Ramones',
-      '2024',
-      'This is your first sovereign research item. Explore tags, collections, and P2P sync.',
-      'Welcome to Vashira 4.0'
-    ).lastInsertRowid;
-
-    if (welcomeTagId) {
-        db.prepare('INSERT OR IGNORE INTO item_tags (itemId, tagId) VALUES (?, ?)').run(itemId, welcomeTagId);
-    }
-  }
-  
   console.log('Vashira Database initialized at:', dbPath);
   
   // Create Storage Directory
@@ -297,15 +295,15 @@ export function getNotes(itemId: number) {
 }
 
 export const addFullText = (itemId: number, text: string) => {
-  const stmt = db.prepare('INSERT OR REPLACE INTO search_index (itemId, content) VALUES (?, ?)');
+  const stmt = db.prepare('INSERT OR REPLACE INTO search_index (itemId, fullText) VALUES (?, ?)');
   stmt.run(itemId, text);
 };
 
 export const searchDeep = (query: string): any[] => {
   const stmt = db.prepare(`
-    SELECT i.* FROM items i
+    SELECT i.*, s.fullText AS content FROM items i
     JOIN search_index s ON i.id = s.itemId
-    WHERE s.content LIKE ? OR i.title LIKE ?
+    WHERE s.fullText LIKE ? OR i.title LIKE ?
   `);
   return stmt.all(`%${query}%`, `%${query}%`);
 };
@@ -354,6 +352,14 @@ export function removeTagFromItem(itemId: number, tagId: number) {
   return db.prepare('DELETE FROM item_tags WHERE itemId = ? AND tagId = ?').run(itemId, tagId);
 }
 
+export function getTagsForItem(itemId: number) {
+  return db.prepare(`
+    SELECT tags.* FROM tags
+    JOIN item_tags ON tags.id = item_tags.tagId
+    WHERE item_tags.itemId = ?
+  `).all(itemId);
+}
+
 export function getItemsByCategory(category: 'unfiled' | 'recent' | 'trash') {
   if (category === 'recent') {
     return db.prepare('SELECT * FROM items ORDER BY dateAdded DESC LIMIT 50').all();
@@ -376,21 +382,25 @@ export function getItemsByTag(tagId: number) {
     ORDER BY items.dateAdded DESC
   `).all(tagId);
 }
-export function upsertConsensus(identifier: string, metadata: any) {
+export function upsertConsensus(identifier: string, metadata: any, voterId: string) {
     return db.prepare(`
-      INSERT INTO consensus_registry (identifier, title, authors, published, votes)
-      VALUES (?, ?, ?, ?, 1)
-      ON CONFLICT(identifier, title, authors) DO UPDATE SET 
-        votes = votes + 1,
+      INSERT INTO consensus_registry (identifier, title, authors, published, voterId)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(identifier, title, authors, voterId) DO UPDATE SET
         lastSeen = CURRENT_TIMESTAMP
-    `).run(identifier, metadata.title, metadata.authors, metadata.published);
+    `).run(identifier, metadata.title, metadata.authors, metadata.published, voterId);
 }
 
 export function getConsensus(identifier: string) {
+    // A candidate only counts as "consensus" once 2+ distinct peers have supplied
+    // it — a single source (however many times it's been asked) isn't consensus.
     return db.prepare(`
-        SELECT * FROM consensus_registry 
-        WHERE identifier = ? 
-        ORDER BY votes DESC 
+        SELECT title, authors, published, COUNT(DISTINCT voterId) as votes, MAX(lastSeen) as lastSeen
+        FROM consensus_registry
+        WHERE identifier = ?
+        GROUP BY title, authors, published
+        HAVING votes >= 2
+        ORDER BY votes DESC
         LIMIT 3
     `).all(identifier);
 }

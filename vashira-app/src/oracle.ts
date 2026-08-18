@@ -25,7 +25,7 @@ export async function askTheOracle(query: string, config: OracleConfig, vashiraA
   // 1. Retrieval: Get top context from Deep Search
   const searchResults = await vashiraAPI.searchDeep(query);
   const context = searchResults.slice(0, 3).map((r: any) => 
-    `TITLE: \${r.title}\nAUTHORS: \${r.authors}\nCONTENT: \${r.content?.substring(0, 1000)}`
+    `TITLE: ${r.title}\nAUTHORS: ${r.authors}\nCONTENT: ${r.content?.substring(0, 1000)}`
   ).join("\n\n---\n\n");
 
   // 2. Augmentation: Build System Prompt
@@ -33,7 +33,7 @@ export async function askTheOracle(query: string, config: OracleConfig, vashiraA
 Be clinical, evidence-based, and cite the studies mentioned in the context.
 
 CONTEXT FROM USER HUB:
-\${context}
+${context}
 `;
 
   // 3. Generation (Handle different provider formats)
@@ -70,7 +70,7 @@ CONTEXT FROM USER HUB:
 
     if (!response.ok) {
        const err = await response.text();
-       throw new Error(`Oracle Error \${response.status}: \${err}`);
+       throw new Error(`Oracle Error ${response.status}: ${err}`);
     }
 
     const data = await response.json();
@@ -84,8 +84,8 @@ CONTEXT FROM USER HUB:
 export async function checkConnectivity(config: OracleConfig) {
   try {
      // Simple ping to the base URL or models endpoint
-     const response = await fetch(`\${config.baseUrl}/models`, {
-        headers: { "Authorization": `Bearer \${config.apiKey}` }
+     const response = await fetch(`${config.baseUrl}/models`, {
+        headers: { "Authorization": `Bearer ${config.apiKey}` }
      });
      return response.ok;
   } catch (e) {

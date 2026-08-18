@@ -152,7 +152,7 @@ export class TranslatorService {
     
     for (const translator of sorted) {
       if (translator.canHandle(url, html)) {
-        console.log(`[TranslatorService] Using \${translator.name} for \${url}`);
+        console.log(`[TranslatorService] Using ${translator.name} for ${url}`);
         const result = await translator.extract(url, html);
         if (result) return result;
       }
@@ -173,7 +173,7 @@ export class TranslatorService {
           const pluginPath = path.join(pluginDir, file);
           const plugin = require(pluginPath);
           if (plugin && plugin.name && !this.translators.find(t => t.name === plugin.name)) {
-             console.log(`[Extensions] Loaded Sovereign Plugin: \${plugin.name}`);
+             console.log(`[Extensions] Loaded Sovereign Plugin: ${plugin.name}`);
              this.translators.push(plugin);
           }
         }

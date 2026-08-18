@@ -32,10 +32,10 @@ export class NatService {
             description: p.description
           }, (err: any) => {
             if (err) {
-              console.warn(`[NAT] Failed to map \${p.protocol} \${p.port}:`, err.message);
+              console.warn(`[NAT] Failed to map ${p.protocol} ${p.port}:`, err.message);
               resolve(false);
             } else {
-              console.log(`[NAT] Mapped \${p.protocol} \${p.port} successfully.`);
+              console.log(`[NAT] Mapped ${p.protocol} ${p.port} successfully.`);
               resolve(true);
             }
           });

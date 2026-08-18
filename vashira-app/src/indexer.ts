@@ -17,14 +17,14 @@ export async function indexItemTask(item: any) {
     const text = extractSovereignText(data);
     
     if (text.trim().length < 200 && (await ocrService.isSilentPdf(data))) {
-      console.warn(`[OCR] Silent PDF Detected: \${item.title}. Flagging for Mastery Scan.`);
+      console.warn(`[OCR] Silent PDF Detected: ${item.title}. Flagging for Mastery Scan.`);
       if (item.id) {
         updateItem(item.id, { masteryStatus: 'unreadable' });
       }
     } else if (text.length > 0 && item.id) {
       addFullText(item.id, text);
       updateItem(item.id, { masteryStatus: 'indexed' });
-      console.log(`[Deep Search] Indexed Mastery: \${item.title} (\${text.length} chars)`);
+      console.log(`[Deep Search] Indexed Mastery: ${item.title} (${text.length} chars)`);
     }
   } catch (error) {
     console.error('Deep Search Indexing failed:', error);

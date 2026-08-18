@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   installStyle: (styleName: string) => ipcRenderer.invoke('install-style', styleName),
   searchDeep: (query: string) => ipcRenderer.invoke('search-deep', query),
   getAllTags: () => ipcRenderer.invoke('get-all-tags'),
+  createTag: (name: string) => ipcRenderer.invoke('create-tag', name),
+  addTagToItem: (itemId: number, tagId: number) => ipcRenderer.invoke('add-tag-to-item', itemId, tagId),
+  removeTagFromItem: (itemId: number, tagId: number) => ipcRenderer.invoke('remove-tag-from-item', itemId, tagId),
+  getTagsForItem: (itemId: number) => ipcRenderer.invoke('get-tags-for-item', itemId),
+  getItemsByTag: (tagId: number) => ipcRenderer.invoke('get-items-by-tag', tagId),
   searchGlobal: (query: string) => ipcRenderer.invoke('search-global', query),
   getAnnotations: (itemId: number) => ipcRenderer.invoke('get-annotations', itemId),
   addAnnotation: (itemId: number, type: string, content: string, position: string, color: string) => ipcRenderer.invoke('add-annotation', itemId, type, content, position, color),
@@ -40,6 +45,9 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   updateItem: (id: number, fields: any) => ipcRenderer.invoke('update-item', id, fields),
   toggleCommunityMode: (enabled: boolean) => ipcRenderer.invoke('toggle-community-mode', enabled),
   syncZotero: (userId: string, apiKey: string) => ipcRenderer.invoke('sync-zotero', userId, apiKey),
+  checkDuplicates: (title: string) => ipcRenderer.invoke('check-duplicates', title),
+  askOracle: (query: string, config: any) => ipcRenderer.invoke('ask-oracle', query, config),
+  getConsensus: (identifier: string) => ipcRenderer.invoke('get-consensus', identifier),
   
   // Window Controls
   minimizeWindow: () => ipcRenderer.send('window-minimize'),

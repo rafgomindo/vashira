@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 
 export async function captureSnapshot(url: string, storagePath: string, itemId: number): Promise<string | null> {
-  const fileName = `snapshot_\${itemId}_\${Date.now()}.pdf`;
+  const fileName = `snapshot_${itemId}_${Date.now()}.pdf`;
   const fullPath = path.join(storagePath, fileName);
 
   return new Promise((resolve) => {
