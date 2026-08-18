@@ -1,0 +1,48 @@
+name: Release Portable Build
+
+# Builds the Windows portable version of Vashira and attaches it to a
+# GitHub Release whenever a version tag (v*) is pushed.
+#
+# This intentionally does NOT use `npm run make` / the Squirrel installer:
+# that path is unsigned (no code-signing certificate), so it would trigger
+# a Windows SmartScreen warning either way, and its zip maker currently
+# fails against the Node version on GitHub's windows-latest runners
+# (cross-zip calls the removed fs.rmdir "recursive" option). The portable
+# .exe from `npm run package` needs neither signing nor that maker, so it
+# is the actual distribution path for now.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-portable:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: vashira-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable package
+        run: npm run package
+
+      - name: Zip portable build
+        run: Compress-Archive -Path "out/Vashira-win32-x64/*" -DestinationPath "out/Vashira-Portable-${{ github.ref_name }}-win32-x64.zip"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vashira-app/out/Vashira-Portable-${{ github.ref_name }}-win32-x64.zip
+          generate_release_notes: true

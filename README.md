@@ -51,8 +51,8 @@ Vashira creates a **Mastery Vault** with **Decentralized P2P Synapse**, **AI RAG
 To generate your own installers and portable versions for your OS:
 
 #### Windows
-- **Installer (.exe)**: `npm run make` -> Generates to `out/make/squirrel.windows/x64/`
-- **Portable Version**: `npm run package` -> Assembles the standalone app in `out/Vashira-win32-x64/`
+- **Portable Version (recommended)**: `npm run package` -> Assembles the standalone app in `out/Vashira-win32-x64/`. Zip that folder for distribution — this is what the [releases page](https://github.com/rafgomindo/vashira/releases) ships, and what CI (`.github/workflows/release.yml`) builds automatically on a version tag push.
+- **Installer (.exe)**: `npm run make` targets a Squirrel installer, but it's currently unsigned (no code-signing certificate — one costs money and isn't set up yet) and its zip-maker step fails on newer Node.js versions (`cross-zip` calls a removed `fs.rmdir` option). Until both are sorted, the portable build above is the real distribution path.
 
 #### macOS
 To build for macOS, you must be on a Mac (or using a CI/CD environment with macOS):
