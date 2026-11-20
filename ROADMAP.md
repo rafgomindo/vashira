@@ -6,11 +6,12 @@ _Drafted 2026-11-20 · Current version: 10.2.0 (not released yet)_
 
 | Item | State |
 |---|---|
-| Phase 0 — Foundations | **Built** (uncommitted); headless checks pass; waiting on your `npm start` test |
-| D1 — Linux & Mac CI | **Built**; not yet run on GitHub (needs a push + a manual workflow run) |
-| D2 — Privacy page + download links | **Built**; vashira.org not yet redeployed |
+| Phase 0 — Foundations | **Built & pushed** (v10.2.0, not yet tagged); headless checks pass; waiting on your `npm start` test |
+| D1 — Linux & Mac CI | **Working**: the manual test build produces the Windows zip, Linux .deb + AppImage and macOS arm64 zip (not launch-tested on Linux/Mac) |
+| D2 — Privacy page + download links | **Live** at https://vashira.org/privacy.html |
 | D3 — Microsoft Store | Waiting on your Partner Center account + identity values |
-| Phases 1–4 | Not started |
+| Phase 1 — Duplicates | **Built**, committed locally (not pushed); 24 headless checks pass; needs your UI test |
+| Phases 2–4 | Not started |
 
 Deviation from the plan: the `/mobile` "bridge" was only a placeholder page, so instead of building LAN pairing for it, the `:51235` server is simply loopback-only. Pairing can come back if a real mobile feature is ever built.
 
