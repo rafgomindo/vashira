@@ -64,7 +64,7 @@ jobs:
       - name: Build .deb and AppImage
         run: |
           npm run build
-          npx electron-forge make --platform linux --targets @electron-forge/maker-deb,@reforged/maker-appimage
+          npx electron-forge make --platform linux   # runs the configured deb + AppImage makers (--targets would drop their config)
       - name: Collect artifacts
         run: |
           mkdir -p dist-release

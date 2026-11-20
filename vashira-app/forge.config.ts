@@ -2,7 +2,6 @@ import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
 import { MakerAppImage } from '@reforged/maker-appimage';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
@@ -23,7 +22,6 @@ const config: ForgeConfig = {
       setupIcon: path.join(__dirname, 'assets', 'icons', 'icon.ico'), // Installer icon for Windows
     }),
     new MakerZIP({}, ['win32', 'darwin']),
-    new MakerRpm({}),
     // Linux: .deb is the primary download (it installs Chromium's sandbox helper
     // correctly); the AppImage is the no-install alternative. Both are built on an
     // Ubuntu runner by .github/workflows/release.yml.

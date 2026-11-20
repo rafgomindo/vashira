@@ -63,7 +63,7 @@ CI (`.github/workflows/release.yml`) builds all three platforms on every `v*` ta
 To build locally (from `vashira-app/`):
 - **Windows portable**: `npm run package` → `out/Vashira-win32-x64/`. Zip that folder.
 - **macOS** (on a Mac): `npm run package` → `out/Vashira-darwin-arm64/Vashira.app`.
-- **Linux** (on Linux): `npm run build && npx electron-forge make --targets @electron-forge/maker-deb,@reforged/maker-appimage` → `out/make/`.
+- **Linux** (on Linux): `npm run build && npx electron-forge make --platform linux` → `out/make/`.
 
 > The Squirrel `.exe` installer (`npm run make` on Windows) isn't used: it would be unsigned, and its zip step fails on current Node.js. Warning-free Windows installs will come from the Microsoft Store instead. See [ROADMAP.md](ROADMAP.md).
 
