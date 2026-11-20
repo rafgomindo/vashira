@@ -53,6 +53,7 @@ import { NatService } from './nat-service.js';
 import { ocrService } from './ocr-service.js';
 import { scrapeDocx } from './scrapper.js';
 import { fetchZoteroLibrary, mapZoteroToVashira } from './zotero-service.js';
+import { findDuplicateGroups, findExactDuplicatesFor, findDuplicatesOfItem, mergeItems, undoMerge, markNotDuplicates, pickDefaultMaster, fillBlanksOverrides } from './duplicates.js';
 import { getSetting, setSetting, getSecret, setSecret, SETTING_KEYS, SECRET_NAMES, SettingKey, SecretName } from './settings.js';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -211,6 +212,12 @@ app.on('ready', () => {
           }
 
           if (itemMetadata) {
+             const dup = findExactDuplicatesFor(itemMetadata)[0];
+             if (dup) {
+               res.writeHead(200, { 'Content-Type': 'application/json' });
+               res.end(JSON.stringify({ success: true, itemId: dup.id, alreadyInLibrary: true }));
+               return;
+             }
              const itemId = await addItem(itemMetadata);
              if (mainWindow) mainWindow.webContents.send('item-ingested', { ...itemMetadata, id: itemId });
              res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -229,15 +236,20 @@ app.on('ready', () => {
 
   ingestServer.listen(51239, '127.0.0.1');
 
-  ipcMain.handle('check-duplicates', async (_, title) => {
-    const items = getItems();
-    const clean = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(' ').filter(w => w.length > 3).join(' ');
-    const target = clean(title);
-    
-    return items.filter((item: any) => {
-      const current = clean(item.title);
-      return current === target || (target.length > 10 && current.includes(target));
-    });
+  // Duplicates (v10.3) — see duplicates.ts
+  ipcMain.handle('check-duplicates', (_, itemId: number) => findDuplicatesOfItem(itemId));
+  ipcMain.handle('find-duplicate-groups', () => findDuplicateGroups());
+  ipcMain.handle('merge-items', (_, masterId: number, otherIds: number[], fieldValues: Record<string, any>) => mergeItems(masterId, otherIds, fieldValues));
+  ipcMain.handle('undo-merge', (_, mergeLogId: number) => { undoMerge(mergeLogId); return true; });
+  ipcMain.handle('mark-not-duplicates', (_, itemIds: number[]) => { markNotDuplicates(itemIds); return true; });
+  ipcMain.handle('merge-all-exact', () => {
+    const logIds: number[] = [];
+    for (const group of findDuplicateGroups().filter(g => g.kind === 'exact')) {
+      const master = pickDefaultMaster(group.items);
+      const others = group.items.filter((i: any) => i.id !== master.id);
+      logIds.push(mergeItems(master.id, others.map((o: any) => o.id), fillBlanksOverrides(master, others)));
+    }
+    return logIds;
   });
 
   ipcMain.handle('get-annotations', (_, itemId) => getAnnotations(itemId));
@@ -276,15 +288,18 @@ app.on('ready', () => {
   
   ipcMain.handle('announce-metadata', (_, doi, title, itemId) => discoveryEngine.announceMetadata(doi, title, itemId));
   
-  ipcMain.handle('import-pdf', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
-    });
+  // opts.sourcePath + opts.force: "Add anyway" after a duplicate warning, without re-opening the dialog.
+  ipcMain.handle('import-pdf', async (_, opts: { sourcePath?: string; force?: boolean } = {}) => {
+    let sourcePath = opts?.sourcePath;
+    if (!sourcePath) {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+      });
+      if (canceled || filePaths.length === 0) return { success: false, canceled: true };
+      sourcePath = filePaths[0];
+    }
 
-    if (canceled || filePaths.length === 0) return { success: false, canceled: true };
-
-    const sourcePath = filePaths[0];
     const fileName = path.basename(sourcePath);
     const storagePath = getStoragePath();
 
@@ -325,6 +340,11 @@ app.on('ready', () => {
         };
       }
 
+      if (!opts?.force) {
+        const existing = findExactDuplicatesFor({ doi: metadata.doi || doi, isbn: metadata.isbn || isbn, fileHash });
+        if (existing.length > 0) return { success: false, duplicate: existing[0], sourcePath };
+      }
+
       // Each attachment gets its own folder (vashira_storage/<itemId>/<name>): files used
       // to be copied flat, so two PDFs with the same name overwrote each other.
       const itemId = await addItem({ ...metadata, fileHash });
@@ -360,11 +380,13 @@ app.on('ready', () => {
     const items = parseBibTeX(content);
     
     const results = [];
+    let skipped = 0;
     for (const item of items) {
+       if (findExactDuplicatesFor(item).length > 0) { skipped++; continue; }
        const itemId = await addItem(item);
        results.push({ ...item, id: itemId });
     }
-    return results;
+    return { items: results, skipped };
   });
 
   ipcMain.handle('import-ris', async () => {
@@ -377,11 +399,13 @@ app.on('ready', () => {
     const items = parseRIS(content);
 
     const results = [];
+    let skipped = 0;
     for (const item of items) {
+       if (findExactDuplicatesFor(item).length > 0) { skipped++; continue; }
        const itemId = await addItem(item);
        results.push({ ...item, id: itemId });
     }
-    return results;
+    return { items: results, skipped };
   });
 
   ipcMain.handle('read-file', async (_, filePath) => {
@@ -414,6 +438,7 @@ app.on('ready', () => {
        try {
          const metadata = await translatorService.translate(id.trim());
          if (metadata) {
+           if (findExactDuplicatesFor(metadata).length > 0) continue;
            const itemId = await addItem(metadata);
            results.push({ ...metadata, id: itemId });
            if (metadata.doi) discoveryEngine.announceMetadata(metadata.doi, metadata.title, itemId as number);
@@ -546,10 +571,9 @@ app.on('ready', () => {
       const zItems = await fetchZoteroLibrary(userId, apiKey);
       let syncCount = 0;
       for (const zItem of zItems) {
-        // Simple duplicate check by title or DOI
-        const existing = getItems().find(i => i.title === zItem.data.title || (i.doi && i.doi === zItem.data.doi));
+        const vItem = mapZoteroToVashira(zItem);
+        const existing = findExactDuplicatesFor(vItem).length > 0 || getItems().some((i: any) => i.title === zItem.data.title);
         if (!existing) {
-          const vItem = mapZoteroToVashira(zItem);
           addItem(vItem);
           syncCount++;
         }
@@ -672,6 +696,7 @@ app.on('ready', () => {
               const { identifier } = JSON.parse(body);
               const metadata = await translatorService.translate(identifier);
               if (metadata) {
+                  if (findExactDuplicatesFor(metadata).length > 0) { res.writeHead(200); res.end('Already in library'); return; }
                   const itemId = await addItem(metadata);
                   if (mainWindow) mainWindow.webContents.send('snatched-item', metadata);
                   res.writeHead(200); res.end('Mastered');
@@ -681,6 +706,12 @@ app.on('ready', () => {
 
           // Default fallback for root POST (extension submissions)
           const item = JSON.parse(body);
+          const dup = findExactDuplicatesFor(item)[0];
+          if (dup) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'Already in library', id: dup.id }));
+            return;
+          }
           const itemId = await addItem(item);
           if (mainWindow) mainWindow.webContents.send('snatched-item', item);
           if (item.doi) discoveryEngine.announceMetadata(item.doi, item.title, itemId as number);

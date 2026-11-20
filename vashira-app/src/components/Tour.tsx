@@ -54,6 +54,12 @@ const STEPS: TourStep[] = [
     body: 'Filters by title or author as you type — and from 3 letters on, also searches the full text inside your PDFs, showing the page number and the matching passage. Accents don’t matter.'
   },
   {
+    target: 'duplicates',
+    tab: 'library',
+    title: 'Duplicates',
+    body: 'Finds records that are the same work — same DOI, ISBN or file, or a near-identical title by the same author or year. Merge them side by side (keeping the best value of each field), merge all exact matches in one click, and undo any merge. Imports are checked automatically.'
+  },
+  {
     target: 'trash',
     tab: 'library',
     title: 'Trash',

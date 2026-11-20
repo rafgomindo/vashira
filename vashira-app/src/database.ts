@@ -116,6 +116,13 @@ export function initDatabase() {
       FOREIGN KEY(relatedItemId) REFERENCES items(id)
     );
 
+    -- [VASHIRA 10.3] Pairs the user marked "not duplicates" (itemA < itemB).
+    CREATE TABLE IF NOT EXISTS not_duplicates (
+      itemA INTEGER NOT NULL,
+      itemB INTEGER NOT NULL,
+      PRIMARY KEY(itemA, itemB)
+    );
+
     CREATE TABLE IF NOT EXISTS search_index (
       itemId INTEGER PRIMARY KEY,
       fullText TEXT,
@@ -307,7 +314,12 @@ export function getItemsByCollection(collectionId: number) {
 /**
  * Sync & Core Actions
  */
-function logSync(action: string, targetTable: string, targetId: number, data: any = null) {
+/** The shared connection, for feature modules (e.g. duplicates.ts) that need transactions across tables. */
+export function getDb() {
+  return db;
+}
+
+export function logSync(action: string, targetTable: string, targetId: number, data: any = null) {
   db.prepare('INSERT INTO sync_log (action, targetTable, targetId, data) VALUES (?, ?, ?, ?)').run(
     action, targetTable, targetId, JSON.stringify(data)
   );

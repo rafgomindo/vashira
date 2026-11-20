@@ -19,6 +19,9 @@ import Scribe from './components/Scribe';
 import SharedVault from './components/SharedVault';
 import Tour from './components/Tour';
 import SharingPrompt from './components/SharingPrompt';
+import DuplicatesView from './components/DuplicatesView';
+
+type ToastAction = { label: string; onClick: () => void };
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('library');
@@ -34,7 +37,10 @@ export default function App() {
   // LAN sharing opt-in: null = still loading, undefined = never asked yet.
   const [shareOnLan, setShareOnLan] = useState<boolean | undefined | null>(null);
   const [natStatus, setNatStatus] = useState<string | null>(null);
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'alert'} | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'alert'; actions?: ToastAction[] } | null>(null);
+  const toastTimer = React.useRef<any>(null);
+  // Item whose duplicate group the Duplicates view should open straight into.
+  const [dupFocusItemId, setDupFocusItemId] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [activeItemConnections, setActiveItemConnections] = useState<any[]>([]);
   const [dupes, setDupes] = useState<any[]>([]);
@@ -52,7 +58,7 @@ export default function App() {
   // Collections & Tags
   const [collections, setCollections] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
-  const [libraryFilter, setLibraryFilter] = useState<{ type: 'all' | 'collection' | 'tag' | 'trash'; id?: number; label?: string }>({ type: 'all' });
+  const [libraryFilter, setLibraryFilter] = useState<{ type: 'all' | 'collection' | 'tag' | 'trash' | 'duplicates'; id?: number; label?: string }>({ type: 'all' });
   const [displayedItems, setDisplayedItems] = useState<any[]>([]);
 
   // Reader States
@@ -250,7 +256,8 @@ export default function App() {
     try {
       const result = await (window as any).vashiraAPI.importBibTeX();
       if (result) {
-        showToast(`Imported ${result.length} item(s) from BibTeX.`);
+        const skipped = result.skipped ? ` (${result.skipped} already in your library, skipped)` : '';
+        showToast(`Imported ${result.items.length} item(s) from BibTeX${skipped}.`);
         loadItems();
       }
     } catch (e: any) {
@@ -262,7 +269,8 @@ export default function App() {
     try {
       const result = await (window as any).vashiraAPI.importRIS();
       if (result) {
-        showToast(`Imported ${result.length} item(s) from RIS.`);
+        const skipped = result.skipped ? ` (${result.skipped} already in your library, skipped)` : '';
+        showToast(`Imported ${result.items.length} item(s) from RIS${skipped}.`);
         loadItems();
       }
     } catch (e: any) {
@@ -270,16 +278,26 @@ export default function App() {
     }
   };
 
-  const showToast = (message: string, type: 'success' | 'alert' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+  // Toasts with actions (Undo, Add anyway…) stay up longer so there's time to click.
+  const showToast = (message: string, type: 'success' | 'alert' = 'success', action?: ToastAction | ToastAction[]) => {
+    const actions = action ? (Array.isArray(action) ? action : [action]) : undefined;
+    setToast({ message, type, actions });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), actions ? 8000 : 3000);
+  };
+
+  const openDuplicates = (focusItemId: number | null = null) => {
+    setDupFocusItemId(focusItemId);
+    setIsDetailsOpen(false);
+    setActiveTab('library');
+    setLibraryFilter({ type: 'duplicates', label: 'Duplicates' });
   };
 
   const handleSelectItem = async (item: any) => {
     setSelectedItem(item);
     setIsDetailsOpen(true);
     try {
-      const d = await (window as any).vashiraAPI.checkDuplicates(item.title);
+      const d = await (window as any).vashiraAPI.checkDuplicates(item.id);
       setDupes(d || []);
     } catch (e) {
       console.error('Duplicate check failed:', e);
@@ -318,12 +336,18 @@ export default function App() {
     }
   };
 
-  const handleImport = async () => {
+  const handleImport = async (opts?: { sourcePath?: string; force?: boolean }) => {
     try {
-      const result = await (window as any).vashiraAPI.importPDF();
+      const result = await (window as any).vashiraAPI.importPDF(opts);
       if (result.success) {
         showToast('Artifact Mastered.');
         loadItems();
+      } else if (result.duplicate) {
+        const existing = result.duplicate;
+        showToast(`Already in your library: “${existing.title}”`, 'alert', [
+          { label: 'OPEN IT', onClick: () => { setToast(null); setLibraryFilter({ type: 'all' }); handleSelectItem(existing); } },
+          { label: 'ADD ANYWAY', onClick: () => { setToast(null); handleImport({ sourcePath: result.sourcePath, force: true }); } },
+        ]);
       } else if (!result.canceled) {
         showToast(result.error || 'Import failed.', 'alert');
       }
@@ -344,12 +368,20 @@ export default function App() {
         collections={collections}
         tags={tags}
         libraryFilter={libraryFilter}
-        onSelectFilter={(f) => { setLibraryFilter(f); setActiveTab('library'); }}
+        onSelectFilter={(f) => { setDupFocusItemId(null); setLibraryFilter(f); setActiveTab("library"); }}
         onCreateCollection={handleCreateCollection}
       />
 
       <main style={{ flex: 1, display: 'flex', minWidth: 0 }}>
-        {activeTab === 'library' && (
+        {activeTab === 'library' && libraryFilter.type === 'duplicates' && (
+          <DuplicatesView
+            onShowToast={showToast}
+            onChanged={() => { loadItems(); loadCollectionsAndTags(); }}
+            focusItemId={dupFocusItemId}
+          />
+        )}
+
+        {activeTab === 'library' && libraryFilter.type !== 'duplicates' && (
           <LibraryGrid
             items={displayedItems}
             viewMode={viewMode}
@@ -452,6 +484,7 @@ export default function App() {
           }}
           onTrash={() => selectedItem && handleTrashItem(selectedItem.id)}
           isTrashed={!!selectedItem?.deletedAt}
+          onReviewDuplicates={() => selectedItem && openDuplicates(selectedItem.id)}
           dupes={dupes}
           collections={collections}
           onAddToCollection={handleAddItemToCollection}
@@ -475,8 +508,13 @@ export default function App() {
       </main>
 
       {toast && (
-        <div className={`toast glass ${toast.type}`}>
-          {toast.message}
+        <div className={`toast glass ${toast.type}`} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span>{toast.message}</span>
+          {toast.actions?.map(a => (
+            <button key={a.label} className="btn-secondary" style={{ padding: '5px 10px', fontSize: '0.7rem', flexShrink: 0 }} onClick={a.onClick}>
+              {a.label}
+            </button>
+          ))}
         </div>
       )}
 

@@ -181,7 +181,7 @@ const LibraryGrid: React.FC<LibraryGridProps> = ({
           )}
 
           {!isTrash && (
-          <button data-tour="import-btn" className="btn-primary" onClick={onImport}>
+          <button data-tour="import-btn" className="btn-primary" onClick={() => onImport()}>
             <Plus size={18} />
             <span>IMPORT MASTERY</span>
           </button>

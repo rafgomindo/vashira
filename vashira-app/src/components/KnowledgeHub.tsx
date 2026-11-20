@@ -17,6 +17,7 @@ interface KnowledgeHubProps {
   onFetchFromCrossRef: () => void;
   onTrash: () => void;
   isTrashed?: boolean;
+  onReviewDuplicates: () => void;
 }
 
 const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
@@ -34,7 +35,8 @@ const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
   onRemoveTag,
   onFetchFromCrossRef,
   onTrash,
-  isTrashed = false
+  isTrashed = false,
+  onReviewDuplicates
 }) => {
   const [consensus, setConsensus] = useState<any[]>([]);
   const [itemTags, setItemTags] = useState<any[]>([]);
@@ -126,9 +128,11 @@ const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
             value={selectedItem.title}
             onChange={e => setSelectedItem({...selectedItem, title: e.target.value})}
           />
-          {dupes.length > 1 && (
+          {dupes.length > 0 && !isTrashed && (
              <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px 12px', borderRadius: '10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
-                <ShieldCheck size={14} /> <span>Potential Duplicate in Master Node</span>
+                <ShieldCheck size={14} />
+                <span style={{ flex: 1 }}>Possible duplicate: {dupes.length} other record{dupes.length === 1 ? '' : 's'} look{dupes.length === 1 ? 's' : ''} like this one.</span>
+                <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: '0.7rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }} onClick={onReviewDuplicates}>REVIEW</button>
              </div>
           )}
         </section>

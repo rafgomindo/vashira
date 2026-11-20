@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Library, Zap, Settings, Share2, Globe, HelpCircle, FolderClosed, Tag as TagIcon, Plus, Trash2 } from 'lucide-react';
+import { Library, Zap, Settings, Share2, Globe, HelpCircle, FolderClosed, Tag as TagIcon, Plus, Trash2, Copy } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -8,8 +8,8 @@ interface SidebarProps {
   natStatus: string | null;
   collections: any[];
   tags: any[];
-  libraryFilter: { type: 'all' | 'collection' | 'tag' | 'trash'; id?: number; label?: string };
-  onSelectFilter: (f: { type: 'all' | 'collection' | 'tag' | 'trash'; id?: number; label?: string }) => void;
+  libraryFilter: { type: 'all' | 'collection' | 'tag' | 'trash' | 'duplicates'; id?: number; label?: string };
+  onSelectFilter: (f: { type: 'all' | 'collection' | 'tag' | 'trash' | 'duplicates'; id?: number; label?: string }) => void;
   onCreateCollection: (name: string) => void;
 }
 
@@ -119,6 +119,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, communityMod
           ))}
         </div>
 
+        <button
+          data-tour="duplicates"
+          onClick={() => onSelectFilter({ type: 'duplicates', label: 'Duplicates' })}
+          className={`sidebar-nav-item ${activeTab === 'library' && libraryFilter.type === 'duplicates' ? 'active' : ''}`}
+          style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '0.8rem' }}
+        >
+          <Copy size={14} />
+          <span>Duplicates</span>
+        </button>
         <button
           data-tour="trash"
           onClick={() => onSelectFilter({ type: 'trash', label: 'Trash' })}
