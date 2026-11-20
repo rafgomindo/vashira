@@ -23,6 +23,8 @@ const CITATION_STYLES = [
   { id: 'apa', label: 'APA' },
   { id: 'ieee', label: 'IEEE' },
   { id: 'mla', label: 'MLA' },
+  { id: 'tapuscrit-note', label: 'Tapuscrit (notes)' },
+  { id: 'tapuscrit-author-date', label: 'Tapuscrit (auteur-date)' },
 ];
 
 const SettingsUI: React.FC<SettingsUIProps> = ({

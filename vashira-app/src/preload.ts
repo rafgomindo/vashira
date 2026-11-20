@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   exportBibTeX: (items: any[]) => ipcRenderer.invoke('export-bibtex', items),
   magicCategorize: () => ipcRenderer.invoke('magic-categorize'),
   generateCitation: (itemId: number, styleName?: string) => ipcRenderer.invoke('generate-citation', itemId, styleName),
+  generateCitationRich: (itemId: number, styleName?: string) => ipcRenderer.invoke('generate-citation-rich', itemId, styleName),
   graphifyItem: (itemId: number) => ipcRenderer.invoke('graphify-item', itemId),
   getInstalledStyles: () => ipcRenderer.invoke('get-installed-styles'),
   installStyle: (styleName: string) => ipcRenderer.invoke('install-style', styleName),
@@ -38,6 +39,11 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   setSetting: (key: string, value: unknown) => ipcRenderer.invoke('set-setting', key, value),
   getSecret: (name: string) => ipcRenderer.invoke('get-secret', name),
   setSecret: (name: string, value: unknown) => ipcRenderer.invoke('set-secret', name, value),
+  onLibraryRepaired: (callback: (p: { fixed: number }) => void) => {
+    const listener = (_: any, p: any) => callback(p);
+    ipcRenderer.on('library-repaired', listener);
+    return () => ipcRenderer.removeListener('library-repaired', listener);
+  },
   trashItem: (itemId: number) => ipcRenderer.invoke('trash-item', itemId),
   restoreItem: (itemId: number) => ipcRenderer.invoke('restore-item', itemId),
   getTrashedItems: () => ipcRenderer.invoke('get-trashed-items'),

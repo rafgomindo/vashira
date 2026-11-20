@@ -44,10 +44,11 @@ import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISB
 import { parseBibTeX, parseRIS, extractMetadataFromHeuristics, generateBibTeX, categorizeItems } from './parser.js';
 import { discoveryEngine } from './discovery.js';
 import { captureSnapshot } from './archiver.js';
-import { CitationEngine, MINIMAL_APA_STYLE, MINIMAL_IEEE_STYLE, MINIMAL_MLA_STYLE } from './citation.js';
+import { CitationEngine, MINIMAL_APA_STYLE, MINIMAL_IEEE_STYLE, MINIMAL_MLA_STYLE, TAPUSCRIT_NOTE_STYLE, TAPUSCRIT_AUTHOR_DATE_STYLE } from './citation.js';
 import { askTheOracle } from './oracle.js';
 import { translatorService } from './translator-service.js';
 import { indexItemTask, reindexLibrary } from './indexer.js';
+import { identifyPdf, looksLikeJunkTitle } from './pdf-metadata.js';
 import { CommunityRelay } from './relay-service.js';
 import { NatService } from './nat-service.js';
 import { ocrService } from './ocr-service.js';
@@ -261,6 +262,8 @@ app.on('ready', () => {
     apa: MINIMAL_APA_STYLE,
     ieee: MINIMAL_IEEE_STYLE,
     mla: MINIMAL_MLA_STYLE,
+    'tapuscrit-note': TAPUSCRIT_NOTE_STYLE,
+    'tapuscrit-author-date': TAPUSCRIT_AUTHOR_DATE_STYLE,
   };
 
   ipcMain.handle('generate-citation', async (_, itemId, styleName = 'apa') => {
@@ -274,6 +277,19 @@ app.on('ready', () => {
     } catch (e) {
       console.error(e);
       return "Citation formatting failed.";
+    }
+  });
+
+  // { text, html } for the clipboard, so pasting into Word keeps italics / small caps.
+  ipcMain.handle('generate-citation-rich', async (_, itemId: number, styleName = 'apa') => {
+    const item = getItemById(itemId);
+    if (!item) return null;
+    try {
+      const styleXml = BUILTIN_STYLES[styleName] || await styleStore.getStyleXml(styleName);
+      return new CitationEngine([item], styleXml).formatCitationRich(itemId);
+    } catch (e) {
+      console.error('[Cite] Formatting failed:', e);
+      return null;
     }
   });
 
@@ -313,32 +329,11 @@ app.on('ready', () => {
       const { buffer } = await handle.read(Buffer.alloc(20000), 0, 20000, 0);
       await handle.close();
 
-      const text = buffer.toString('utf8');
       const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
 
-      const doi = extractDOIFromText(text);
-      const isbn = extractISBNFromText(text);
-
-      let metadata: any = null;
-      if (doi) {
-        try { metadata = await fetchMetadataFromDOI(doi); } catch (e) {}
-      }
-
-      if (!metadata && isbn) {
-        metadata = await translatorService.translate(isbn);
-      }
-      
-      if (!metadata) {
-        const h = extractMetadataFromHeuristics(text);
-        metadata = {
-            title: h.title || fileName || 'Imported PDF',
-            itemType: 'journalArticle',
-            authors: 'Extracted Content',
-            published: 'N/A',
-            doi: doi || '',
-            abstract: h.abstract || ''
-        };
-      }
+      // Identify from the real text of the first pages + the PDF's info fields + the file name
+      // (the old raw-bytes heuristic produced titles like "%PDF-1.6").
+      const { metadata, doi, isbn } = await identifyPdf(sourcePath);
 
       if (!opts?.force) {
         const existing = findExactDuplicatesFor({ doi: metadata.doi || doi, isbn: metadata.isbn || isbn, fileHash });
@@ -627,7 +622,13 @@ app.on('ready', () => {
   setTimeout(() => {
     reindexLibrary((done, total) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('index-progress', { done, total });
-    }).catch(e => console.error('[Deep Search] Library re-index failed:', e));
+    })
+      .catch(e => console.error('[Deep Search] Library re-index failed:', e))
+      .then(() => repairJunkMetadata())
+      .then(fixed => {
+        if (fixed > 0 && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('library-repaired', { fixed });
+      })
+      .catch(e => console.error('[Identify] Metadata repair failed:', e));
   }, 3000);
 
   const snatcher = http.createServer(async (req, res) => {
@@ -737,6 +738,38 @@ app.on('ready', () => {
   // Every extension / Office add-in client talks to localhost / 127.0.0.1.
   snatcher.listen(51235, '127.0.0.1');
 });
+
+/**
+ * Items imported before v10.3 got titles from raw PDF bytes ("%PDF-1.6", "/Subtype /Type1",
+ * "0000000016 00000 n"). Re-identify those from the PDF itself. Only touches items whose
+ * title is clearly junk, and only fills author/year/abstract where they're placeholders.
+ */
+async function repairJunkMetadata(): Promise<number> {
+  const victims = getItems().filter((i: any) =>
+    looksLikeJunkTitle(i.title) && i.filePath && i.filePath.toLowerCase().endsWith('.pdf') && fs.existsSync(i.filePath));
+  let fixed = 0;
+  for (const item of victims) {
+    try {
+      const { metadata: m } = await identifyPdf(item.filePath);
+      if (!m?.title || looksLikeJunkTitle(m.title)) continue;
+      const placeholder = (v: any) => !v || /^(extracted content|unknown|n\/a)$/i.test(String(v).trim());
+      const fields: any = { title: m.title };
+      if (placeholder(item.authors) && m.authors) fields.authors = m.authors;
+      if (placeholder(item.published) && m.published) fields.published = m.published;
+      if (!item.abstract && m.abstract) fields.abstract = m.abstract;
+      if (!item.doi && m.doi) fields.doi = m.doi;
+      if (!item.isbn && m.isbn) fields.isbn = m.isbn;
+      if (m.itemType && (item.itemType === 'journalArticle' || !item.itemType)) fields.itemType = m.itemType;
+      for (const k of ['journal', 'publisher', 'volume', 'issue', 'pages']) if (!item[k] && m[k]) fields[k] = m[k];
+      updateItem(item.id, fields);
+      fixed++;
+      console.log(`[Identify] Repaired: "${item.title.slice(0, 30)}" → "${m.title}"`);
+    } catch (e) {
+      console.error('[Identify] Could not repair item', item.id, e);
+    }
+  }
+  return fixed;
+}
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

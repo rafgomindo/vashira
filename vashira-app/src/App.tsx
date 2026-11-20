@@ -97,9 +97,16 @@ export default function App() {
       }
     });
 
+    // Items imported with junk titles ("%PDF-1.6"…) get re-identified in the background.
+    const unsubscribeRepaired = (window as any).vashiraAPI.onLibraryRepaired(({ fixed }: { fixed: number }) => {
+      showToast(`Fixed the titles of ${fixed} imported PDF${fixed === 1 ? '' : 's'}.`);
+      loadItems();
+    });
+
     return () => {
       if (unsubscribeIngested) unsubscribeIngested();
       if (unsubscribeIndex) unsubscribeIndex();
+      if (unsubscribeRepaired) unsubscribeRepaired();
     };
   }, []);
 
@@ -478,9 +485,19 @@ export default function App() {
              }
           }}
           onCite={async () => {
-             const cite = await (window as any).vashiraAPI.generateCitation(selectedItem.id, citationStyle);
-             navigator.clipboard.writeText(cite);
-             showToast(`${citationStyle.toUpperCase()} citation copied.`);
+             const cite = await (window as any).vashiraAPI.generateCitationRich(selectedItem.id, citationStyle);
+             if (!cite) { showToast('Citation formatting failed.', 'alert'); return; }
+             try {
+               // Rich copy: Word / LibreOffice keep the style's italics and small caps.
+               await navigator.clipboard.write([new ClipboardItem({
+                 'text/plain': new Blob([cite.text], { type: 'text/plain' }),
+                 'text/html': new Blob([cite.html], { type: 'text/html' }),
+               })]);
+             } catch {
+               await navigator.clipboard.writeText(cite.text);
+             }
+             const styleLabel: Record<string, string> = { apa: 'APA', ieee: 'IEEE', mla: 'MLA', 'tapuscrit-note': 'Tapuscrit (notes)', 'tapuscrit-author-date': 'Tapuscrit (auteur-date)' };
+             showToast(`${styleLabel[citationStyle] || citationStyle} citation copied.`);
           }}
           onTrash={() => selectedItem && handleTrashItem(selectedItem.id)}
           isTrashed={!!selectedItem?.deletedAt}

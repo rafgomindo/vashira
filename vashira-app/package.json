@@ -7,11 +7,12 @@
   "private": true,
   "scripts": {
     "start": "npm run build && electron-forge start",
-    "build:main": "esbuild src/main.ts src/pdf-worker.ts --bundle --platform=node --target=node22 --outdir=.vite/build --external:electron --external:better-sqlite3 --external:pdfjs-dist",
+    "build:main": "esbuild src/main.ts src/pdf-worker.ts --bundle --platform=node --target=node22 --outdir=.vite/build --external:electron --external:better-sqlite3 --external:pdfjs-dist --loader:.csl=text --loader:.xml=text",
     "build:preload": "esbuild src/preload.ts --bundle --platform=node --target=node18 --outfile=.vite/build/preload.js --external:electron",
     "build:renderer": "node build-renderer.mjs",
     "build": "npm run build:main && npm run build:preload && npm run build:renderer",
     "package": "npm run build && electron-forge package",
+    "install:local": "npm run package && node scripts/install-local.mjs",
     "make": "npm run build && electron-forge make",
     "lint": "eslint --ext .ts,.tsx ."
   },

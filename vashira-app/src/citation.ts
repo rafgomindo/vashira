@@ -71,13 +71,98 @@ export const MINIMAL_MLA_STYLE = `<?xml version="1.0" encoding="utf-8"?>
   </bibliography>
 </style>`;
 
-const MINIMAL_LOCALE = `<?xml version="1.0" encoding="utf-8"?>
-<locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
-  <terms>
-    <term name="and">and</term>
-    <term name="et-al">et al.</term>
-  </terms>
-</locale>`;
+// Official CSL locale files (CC BY-SA 3.0, github.com/citation-style-language/locales),
+// bundled so French/Spanish styles get the right terms ("dir.", "et", "p.") offline.
+import LOCALE_EN_US from './styles/locales-en-US.xml';
+import LOCALE_FR_FR from './styles/locales-fr-FR.xml';
+import LOCALE_ES_ES from './styles/locales-es-ES.xml';
+// "Le tapuscrit" (EHESS) styles, verbatim from the official CSL style repository (CC BY-SA 3.0).
+import TAPUSCRIT_NOTE from './styles/le-tapuscrit-note.csl';
+import TAPUSCRIT_AUTHOR_DATE from './styles/le-tapuscrit-author-date.csl';
+
+export const TAPUSCRIT_NOTE_STYLE: string = TAPUSCRIT_NOTE;
+export const TAPUSCRIT_AUTHOR_DATE_STYLE: string = TAPUSCRIT_AUTHOR_DATE;
+
+const LOCALES: Record<string, string> = { 'en-US': LOCALE_EN_US, 'fr-FR': LOCALE_FR_FR, 'es-ES': LOCALE_ES_ES };
+
+function retrieveLocale(lang: string): string {
+  if (LOCALES[lang]) return LOCALES[lang];
+  const prefix = (lang || '').slice(0, 2).toLowerCase();
+  const match = Object.keys(LOCALES).find(k => k.toLowerCase().startsWith(prefix));
+  return LOCALES[match || 'en-US'];
+}
+
+// Vashira/Zotero item types → CSL types.
+const CSL_TYPES: Record<string, string> = {
+  journalArticle: 'article-journal', magazineArticle: 'article-magazine', newspaperArticle: 'article-newspaper',
+  book: 'book', bookSection: 'chapter', thesis: 'thesis', report: 'report', webpage: 'webpage',
+  conferencePaper: 'paper-conference', preprint: 'article', manuscript: 'manuscript', document: 'document',
+};
+
+type CSLName = { family?: string; given?: string; literal?: string };
+
+function parsePerson(p: string): CSLName | null {
+  const name = p.trim();
+  if (!name || /^(unknown|extracted content|n\/a)$/i.test(name)) return null;
+  if (name.includes(',')) {
+    const [family, given] = name.split(',').map(x => x.trim());
+    return { family, given };
+  }
+  const parts = name.split(/\s+/);
+  if (parts.length === 1) return { literal: name };
+  return { family: parts[parts.length - 1], given: parts.slice(0, -1).join(' ') };
+}
+
+/**
+ * The authors column comes in several shapes depending on the importer:
+ * "Given Family, Given Family" (CrossRef, arXiv, OpenLibrary), "Family, Given; Family, Given"
+ * (Zotero), "Family, Given and Family, Given" (BibTeX), or "Family, Given, Family, Given" (RIS).
+ */
+export function parseAuthors(authors?: string | null): CSLName[] {
+  if (!authors) return [];
+  const a = authors.trim();
+  let people: string[];
+  if (/;| and /.test(a)) {
+    people = a.split(/;| and /);
+  } else {
+    const pieces = a.split(',').map(x => x.trim()).filter(Boolean);
+    // "Mbembe, Achille" / "Mbembe, Achille, Balandier, Georges": comma-separated single-word pieces in pairs.
+    const looksPaired = pieces.length % 2 === 0 && pieces.length > 0 && pieces.every(x => !/\s/.test(x));
+    people = looksPaired ? pieces.reduce<string[]>((acc, x, i) => (i % 2 ? (acc[acc.length - 1] += ', ' + x, acc) : [...acc, x]), []) : pieces;
+  }
+  return people.map(parsePerson).filter(Boolean) as CSLName[];
+}
+
+function yearOf(published?: string | null): number | null {
+  const m = (published || '').match(/\b(1[5-9]\d\d|20\d\d)\b/);
+  return m ? Number(m[1]) : null;
+}
+
+export function toCSL(item: any) {
+  const type = CSL_TYPES[item.itemType] || (item.journal ? 'article-journal' : item.isbn || item.publisher ? 'book' : 'document');
+  const year = yearOf(item.published);
+  const csl: any = {
+    id: item.id.toString(),
+    type,
+    title: item.title,
+    author: parseAuthors(item.authors),
+  };
+  if (year) csl.issued = { 'date-parts': [[year]] };
+  if (item.journal) csl['container-title'] = item.journal;
+  if (item.publisher) csl.publisher = item.publisher;
+  if (item.volume) csl.volume = item.volume;
+  if (item.issue) csl.issue = item.issue;
+  if (item.edition) csl.edition = item.edition;
+  if (item.doi) csl.DOI = item.doi;
+  if (item.isbn) csl.ISBN = item.isbn;
+  if (item.url) csl.URL = item.url;
+  // `pages` holds a page count for books, a page range for articles.
+  if (item.pages) {
+    if (type === 'book' || type === 'thesis' || type === 'report') csl['number-of-pages'] = String(item.pages);
+    else csl.page = String(item.pages);
+  }
+  return csl;
+}
 
 export class CitationEngine {
   private citeproc: any;
@@ -85,38 +170,27 @@ export class CitationEngine {
 
   constructor(items: any[], styleXml: string) {
     this.sys = {
-      retrieveLocale: () => MINIMAL_LOCALE,
+      retrieveLocale,
       retrieveItem: (id: string) => {
         const item = items.find(i => i.id.toString() === id);
-        return item ? this.transformToCSL(item) : null;
+        return item ? toCSL(item) : null;
       }
     };
 
     this.citeproc = new CSL.Engine(this.sys, styleXml);
+    // Plain text: the result goes to the clipboard / a text editor, not into HTML.
+    this.citeproc.setOutputFormat('text');
   }
 
-  private transformToCSL(item: any) {
-    // Advanced Mapping for Professional Mastery
-    return {
-      id: item.id.toString(),
-      type: 'article-journal',
-      title: item.title,
-      DOI: item.doi,
-      author: item.authors ? item.authors.split(',').map((a: string) => {
-        const parts = a.trim().split(' ');
-        return { 
-          family: parts[parts.length - 1], 
-          given: parts.length > 1 ? parts.slice(0, -1).join(' ') : '' 
-        };
-      }) : [],
-      issued: { 'date-parts': [[new Date(item.dateAdded).getFullYear()]] },
-      'container-title': item.published || 'Unknown Source'
-    };
-  }
-
-  public formatCitation(id: number) {
+  public formatCitation(id: number, format: 'text' | 'html' = 'text') {
+    this.citeproc.setOutputFormat(format);
     this.citeproc.updateItems([id.toString()]);
     const result = this.citeproc.makeBibliography();
-    return result[1][0]; // Returns the formatted string
+    return String(result[1][0]).trim();
+  }
+
+  /** Both forms, for the clipboard: Word/LibreOffice paste the HTML (italics, small caps), plain editors the text. */
+  public formatCitationRich(id: number) {
+    return { text: this.formatCitation(id, 'text'), html: this.formatCitation(id, 'html') };
   }
 }
