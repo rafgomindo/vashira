@@ -41,7 +41,9 @@ export function initDatabase() {
       filePath TEXT,
       extra TEXT,
       tags TEXT,
-      masteryStatus TEXT DEFAULT 'none'
+      masteryStatus TEXT DEFAULT 'none',
+      textIndexVersion INTEGER,
+      deletedAt DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS creators (
@@ -119,6 +121,14 @@ export function initDatabase() {
       fullText TEXT,
       FOREIGN KEY(itemId) REFERENCES items(id)
     );
+    -- [VASHIRA 10.2] Real per-page text (pdf.js), ranked with bm25. remove_diacritics
+    -- makes "necropolitica" match "Necropolítica" — the library is multilingual.
+    CREATE VIRTUAL TABLE IF NOT EXISTS page_text USING fts5(
+      text,
+      itemId UNINDEXED,
+      page UNINDEXED,
+      tokenize = 'unicode61 remove_diacritics 2'
+    );
     CREATE TABLE IF NOT EXISTS consensus_registry (
       identifier TEXT,
       title TEXT,
@@ -174,7 +184,9 @@ export function initDatabase() {
     { name: 'volume', type: 'TEXT' },
     { name: 'issue', type: 'TEXT' },
     { name: 'edition', type: 'TEXT' },
-    { name: 'masteryStatus', type: 'TEXT' }
+    { name: 'masteryStatus', type: 'TEXT' },
+    { name: 'textIndexVersion', type: 'INTEGER' },
+    { name: 'deletedAt', type: 'DATETIME' }
   ];
 
   requiredColumns.forEach(col => {
@@ -213,8 +225,58 @@ export function getStoragePath() {
   return path.join(base, 'vashira_storage');
 }
 
+// Every library listing hides trashed items; only the Trash view shows them.
 export function getItems() {
-  return db.prepare('SELECT * FROM items ORDER BY dateAdded DESC').all();
+  return db.prepare('SELECT * FROM items WHERE deletedAt IS NULL ORDER BY dateAdded DESC').all();
+}
+
+/**
+ * Trash (v10.2): soft delete first, so nothing is lost by a misclick and merges
+ * (Phase 1) can be undone. Emptying the trash purges every row that hangs off
+ * the item; the caller removes the stored files it returns.
+ */
+export function trashItem(id: number) {
+  db.prepare('UPDATE items SET deletedAt = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+  logSync('TRASH', 'items', id);
+}
+
+export function restoreItem(id: number) {
+  db.prepare('UPDATE items SET deletedAt = NULL WHERE id = ?').run(id);
+  logSync('RESTORE', 'items', id);
+}
+
+export function getTrashedItems() {
+  return db.prepare('SELECT * FROM items WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC').all();
+}
+
+/** True if any item (trashed or not) still points at this file. */
+export function isFileReferenced(filePath: string) {
+  return !!db.prepare('SELECT 1 FROM items WHERE filePath = ? OR snapshotPath = ? LIMIT 1').get(filePath, filePath);
+}
+
+/** Permanently deletes trashed items (all of them, or just `ids`). Returns their file paths for cleanup. */
+export function purgeTrashedItems(ids?: number[]): string[] {
+  const trashed: any[] = getTrashedItems().filter((i: any) => !ids || ids.includes(i.id));
+  const files: string[] = [];
+  const purge = db.transaction((items: any[]) => {
+    for (const item of items) {
+      const id = item.id;
+      db.prepare('DELETE FROM item_tags WHERE itemId = ?').run(id);
+      db.prepare('DELETE FROM collection_items WHERE itemId = ?').run(id);
+      db.prepare('DELETE FROM notes WHERE itemId = ?').run(id);
+      db.prepare('DELETE FROM annotations WHERE itemId = ?').run(id);
+      db.prepare('DELETE FROM item_relations WHERE itemId = ? OR relatedItemId = ?').run(id, id);
+      db.prepare('DELETE FROM itemCreators WHERE itemId = ?').run(id);
+      db.prepare('DELETE FROM search_index WHERE itemId = ?').run(id);
+      db.prepare('DELETE FROM page_text WHERE itemId = ?').run(id);
+      db.prepare('DELETE FROM items WHERE id = ?').run(id);
+      logSync('PURGE', 'items', id, { title: item.title });
+      if (item.filePath) files.push(item.filePath);
+      if (item.snapshotPath) files.push(item.snapshotPath);
+    }
+  });
+  purge(trashed);
+  return files;
 }
 
 /**
@@ -237,7 +299,7 @@ export function getItemsByCollection(collectionId: number) {
   return db.prepare(`
     SELECT items.* FROM items 
     JOIN collection_items ON items.id = collection_items.itemId
-    WHERE collection_items.collectionId = ?
+    WHERE collection_items.collectionId = ? AND items.deletedAt IS NULL
     ORDER BY items.dateAdded DESC
   `).all(collectionId);
 }
@@ -299,13 +361,93 @@ export const addFullText = (itemId: number, text: string) => {
   stmt.run(itemId, text);
 };
 
+/** Replaces an item's per-page text in the FTS index (pages[0] is page 1). */
+export function setPageText(itemId: number, pages: string[]) {
+  const write = db.transaction(() => {
+    db.prepare('DELETE FROM page_text WHERE itemId = ?').run(itemId);
+    const insert = db.prepare('INSERT INTO page_text (text, itemId, page) VALUES (?, ?, ?)');
+    pages.forEach((text, i) => { if (text.trim()) insert.run(text, itemId, i + 1); });
+  });
+  write();
+}
+
+/** PDFs whose text was never extracted with the current extractor version. */
+export function getItemsNeedingTextIndex(version: number) {
+  return db.prepare(`
+    SELECT * FROM items
+    WHERE deletedAt IS NULL AND filePath LIKE '%.pdf'
+      AND (textIndexVersion IS NULL OR textIndexVersion < ?)
+    ORDER BY dateAdded DESC
+  `).all(version);
+}
+
+/**
+ * User text → safe FTS5 query: every word must appear (implicit AND), the last
+ * one as a prefix so results show up while typing. Quoting each token keeps
+ * FTS5 syntax characters in user input from throwing.
+ */
+function toFtsQuery(query: string): string | null {
+  const tokens = (query.match(/[\p{L}\p{N}]+/gu) || []).slice(0, 12);
+  if (tokens.length === 0) return null;
+  return tokens.map((t, i) => `"${t}"${i === tokens.length - 1 ? '*' : ''}`).join(' ');
+}
+
+/** Ranked full-text hits grouped per item: [{ itemId, hits: [{ page, snippet }] }], best first. */
+export function searchFullText(query: string, limit = 50) {
+  const fts = toFtsQuery(query);
+  if (!fts) return [];
+  const rows = db.prepare(`
+    SELECT p.itemId AS itemId, p.page AS page,
+           snippet(page_text, 0, '«', '»', '…', 14) AS snippet
+    FROM page_text p
+    JOIN items i ON i.id = p.itemId
+    WHERE page_text MATCH ? AND i.deletedAt IS NULL
+    ORDER BY bm25(page_text)
+    LIMIT 500
+  `).all(fts);
+
+  const byItem = new Map<number, { itemId: number; hits: { page: number; snippet: string }[] }>();
+  for (const r of rows as any[]) {
+    let entry = byItem.get(r.itemId);
+    if (!entry) {
+      if (byItem.size >= limit) continue;
+      entry = { itemId: r.itemId, hits: [] };
+      byItem.set(r.itemId, entry);
+    }
+    if (entry.hits.length < 5) entry.hits.push({ page: r.page, snippet: r.snippet });
+  }
+  return Array.from(byItem.values());
+}
+
+/**
+ * Items matching `query` with their most relevant page text as `content` —
+ * the retrieval step for the Oracle. Full-text hits first, then title-only matches.
+ */
 export const searchDeep = (query: string): any[] => {
-  const stmt = db.prepare(`
+  const results: any[] = [];
+  const seen = new Set<number>();
+  const pageStmt = db.prepare('SELECT text FROM page_text WHERE itemId = ? AND page = ?');
+
+  for (const { itemId, hits } of searchFullText(query, 10)) {
+    const item = getItemById(itemId);
+    if (!item) continue;
+    const content = hits.slice(0, 2)
+      .map(h => `[p. ${h.page}] ${(pageStmt.get(itemId, h.page) as any)?.text || ''}`)
+      .join('\n\n');
+    results.push({ ...item, content, pages: hits.map(h => h.page) });
+    seen.add(itemId);
+  }
+
+  const titleMatches = db.prepare(`
     SELECT i.*, s.fullText AS content FROM items i
-    JOIN search_index s ON i.id = s.itemId
-    WHERE s.fullText LIKE ? OR i.title LIKE ?
-  `);
-  return stmt.all(`%${query}%`, `%${query}%`);
+    LEFT JOIN search_index s ON i.id = s.itemId
+    WHERE i.deletedAt IS NULL AND i.title LIKE ?
+    LIMIT 10
+  `).all(`%${query}%`);
+  for (const item of titleMatches as any[]) {
+    if (!seen.has(item.id)) results.push(item);
+  }
+  return results;
 };
 
 export function addNote(itemId: number, content: string) {
@@ -362,14 +504,17 @@ export function getTagsForItem(itemId: number) {
 
 export function getItemsByCategory(category: 'unfiled' | 'recent' | 'trash') {
   if (category === 'recent') {
-    return db.prepare('SELECT * FROM items ORDER BY dateAdded DESC LIMIT 50').all();
+    return db.prepare('SELECT * FROM items WHERE deletedAt IS NULL ORDER BY dateAdded DESC LIMIT 50').all();
   }
   if (category === 'unfiled') {
     return db.prepare(`
-      SELECT * FROM items 
-      WHERE id NOT IN (SELECT itemId FROM collection_items)
+      SELECT * FROM items
+      WHERE deletedAt IS NULL AND id NOT IN (SELECT itemId FROM collection_items)
       ORDER BY dateAdded DESC
     `).all();
+  }
+  if (category === 'trash') {
+    return getTrashedItems();
   }
   return [];
 }
@@ -378,7 +523,7 @@ export function getItemsByTag(tagId: number) {
   return db.prepare(`
     SELECT items.* FROM items
     JOIN item_tags ON items.id = item_tags.itemId
-    WHERE item_tags.tagId = ?
+    WHERE item_tags.tagId = ? AND items.deletedAt IS NULL
     ORDER BY items.dateAdded DESC
   `).all(tagId);
 }

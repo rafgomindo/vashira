@@ -1,48 +1,108 @@
-name: Release Portable Build
+name: Release
 
-# Builds the Windows portable version of Vashira and attaches it to a
-# GitHub Release whenever a version tag (v*) is pushed.
+# Builds Vashira for Windows, Linux and macOS and publishes one GitHub Release
+# whenever a version tag (v*) is pushed. Each OS builds on its own runner:
+# native modules (better-sqlite3 today, node-llama-cpp later) can't be
+# cross-packaged.
 #
-# This intentionally does NOT use `npm run make` / the Squirrel installer:
-# that path is unsigned (no code-signing certificate), so it would trigger
-# a Windows SmartScreen warning either way, and its zip maker currently
-# fails against the Node version on GitHub's windows-latest runners
-# (cross-zip calls the removed fs.rmdir "recursive" option). The portable
-# .exe from `npm run package` needs neither signing nor that maker, so it
-# is the actual distribution path for now.
+# Windows: portable zip. This deliberately does NOT use `npm run make` / the
+# Squirrel installer — it's unsigned (SmartScreen warns either way) and its zip
+# maker fails on current Node. Warning-free Windows installs come from the
+# Microsoft Store (MSIX) instead; see ROADMAP.md (D3).
+# Linux: .deb (primary) + AppImage.
+# macOS: Apple Silicon zip, unsigned. Forge's fuses plugin re-applies the free
+# ad-hoc signature Apple Silicon needs to launch; users approve the first launch
+# via System Settings → Privacy & Security → "Open Anyway".
 
 on:
   push:
     tags:
       - 'v*'
+  # Manual "test build" from the Actions tab: builds all three platforms and keeps
+  # the files as workflow artifacts, without publishing a release.
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-windows-portable:
+  windows:
     runs-on: windows-latest
     defaults:
       run:
         working-directory: vashira-app
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm ci
-
+          node-version: 22
+      - run: npm ci
       - name: Build portable package
         run: npm run package
-
       - name: Zip portable build
-        run: Compress-Archive -Path "out/Vashira-win32-x64/*" -DestinationPath "out/Vashira-Portable-${{ github.ref_name }}-win32-x64.zip"
+        run: Compress-Archive -Path "out/Vashira-win32-x64/*" -DestinationPath "out/Vashira-Portable-${{ github.ref_type == 'tag' && github.ref_name || 'test' }}-win32-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: vashira-app/out/Vashira-Portable-${{ github.ref_type == 'tag' && github.ref_name || 'test' }}-win32-x64.zip
 
+  linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vashira-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build .deb and AppImage
+        run: |
+          npm run build
+          npx electron-forge make --platform linux --targets @electron-forge/maker-deb,@reforged/maker-appimage
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist-release
+          find out/make -type f \( -name '*.deb' -o -name '*.AppImage' \) -exec cp {} dist-release/ \;
+          ls -l dist-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: vashira-app/dist-release/*
+
+  macos:
+    runs-on: macos-latest # Apple Silicon (arm64)
+    defaults:
+      run:
+        working-directory: vashira-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build app bundle
+        run: npm run package
+      - name: Zip app bundle
+        # ditto (not zip) preserves the bundle's symlinks and code signature.
+        run: ditto -c -k --keepParent "out/Vashira-darwin-arm64/Vashira.app" "out/Vashira-${{ github.ref_type == 'tag' && github.ref_name || 'test' }}-macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: vashira-app/out/Vashira-${{ github.ref_type == 'tag' && github.ref_name || 'test' }}-macos-arm64.zip
+
+  release:
+    needs: [windows, linux, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: vashira-app/out/Vashira-Portable-${{ github.ref_name }}-win32-x64.zip
+          files: artifacts/*
           generate_release_notes: true

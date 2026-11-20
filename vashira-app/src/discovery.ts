@@ -9,6 +9,12 @@ import dgram from 'node:dgram';
  * 2. SYNC: Node broadcasts 'MASTERY_ANNOUNCE' when adding new items.
  * 3. RETRIEVAL: Nodes communicate via direct UDP Unicast for specific metadata.
  */
+/** The only item fields ever sent to a peer. */
+export const SHAREABLE_FIELDS = [
+  'title', 'itemType', 'authors', 'published', 'abstract', 'doi', 'isbn',
+  'journal', 'volume', 'issue', 'pages', 'publisher', 'edition', 'fileHash'
+] as const;
+
 class PeerDiscovery extends EventEmitter {
   private socket: dgram.Socket;
   private PORT = 41234;
@@ -17,6 +23,14 @@ class PeerDiscovery extends EventEmitter {
   private remotePeers: Set<string> = new Set();
   private discoveries: any[] = [];
   public nodeId = `node-${Math.random().toString(36).substring(7)}`;
+  // Whether this node tells peers what it holds (announcements + answering metadata
+  // requests). The desktop app sets this from the user's opt-in; headless hubs
+  // (vashira-node) keep the default.
+  private sharingEnabled = true;
+
+  public setSharingEnabled(enabled: boolean) {
+    this.sharingEnabled = enabled;
+  }
 
   constructor() {
     super();
@@ -45,7 +59,8 @@ class PeerDiscovery extends EventEmitter {
           if (this.discoveries.length > 50) this.discoveries.pop();
           this.peers.add(`MasterNode@${rinfo.address}`);
         } else if (data.type === 'REQUEST_METADATA') {
-          this.emit('metadata-request', { doi: data.doi, peer: rinfo.address });
+          // Answering reveals that we hold the item, so it counts as sharing.
+          if (this.sharingEnabled) this.emit('metadata-request', { doi: data.doi, peer: rinfo.address });
         } else if (data.type === 'RESPONSE_METADATA') {
           // Identify the vote by IP, not the sender's self-reported nodeId — nodeId is
           // a random string regenerated every launch, so it can't anchor trust across sessions.
@@ -86,6 +101,7 @@ class PeerDiscovery extends EventEmitter {
   public getLocalDiscoveries() { return this.discoveries; }
 
   public announceMetadata(doi: string, title: string, itemId: number) {
+    if (!this.sharingEnabled) return;
     const message = JSON.stringify({
       type: 'MASTERY_ANNOUNCE',
       nodeId: this.nodeId,
@@ -107,7 +123,14 @@ class PeerDiscovery extends EventEmitter {
     this.socket.send(message, 0, message.length, this.PORT, peerIp);
   }
 
-  public sendMetadata(metadata: any, peerIp: string) {
+  public sendMetadata(item: any, peerIp: string) {
+    // Bibliographic fields only. The full DB row used to go out, including
+    // filePath (which contains the OS username), personal categories, and source
+    // URLs that can carry institutional-proxy session tokens.
+    const metadata: Record<string, unknown> = {};
+    for (const key of SHAREABLE_FIELDS) {
+      if (item[key] !== undefined && item[key] !== null && item[key] !== '') metadata[key] = item[key];
+    }
     const message = JSON.stringify({ type: 'RESPONSE_METADATA', nodeId: this.nodeId, metadata });
     this.socket.send(message, 0, message.length, this.PORT, peerIp);
   }

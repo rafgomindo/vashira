@@ -1,8 +1,17 @@
 # 📜 Vashira Mastery: The Historical Record
 
-This document tracks the sovereign evolution of Vashira from its inception to the Working Build (v10.1.0).
+This document tracks the sovereign evolution of Vashira from its inception to the Foundations Build (v10.2.0).
 
-## [v10.1.0] - The Working Build (Current)
+## [v10.2.0] - The Foundations Build (Current)
+- **Real Full-Text Search**: The indexer used to scan raw PDF bytes, which on compressed PDFs (nearly all of them) stored PDF file syntax instead of the text — Deep Search and the Oracle were working from that. Text is now extracted page by page with pdf.js in a background process and stored in a ranked, accent-insensitive SQLite FTS5 index. The existing library is re-indexed automatically on first launch, and the library search box now also finds text inside PDFs, showing the page number and the matching passage.
+- **Trash**: Items can finally be deleted. They go to a Trash first (restore anytime); emptying it removes the item, everything attached to it, and its stored file.
+- **Safer Attachments**: Imported PDFs are stored in their own folder per item, so two files with the same name no longer overwrite each other.
+- **Privacy Hardening**: The capture server (port 51235) and the AI provider endpoint (51236) now accept connections from this computer only — previously anyone on the same network could read the whole library. Peer replies contain bibliographic fields only (they used to include local file paths, which contain the OS username). Sharing on the local network is now opt-in: asked once (in the tour, or a one-time prompt) and switchable in Settings. API keys are encrypted with the OS keychain instead of plaintext localStorage.
+- **Electron 44**: Upgraded from Electron 32, which stopped receiving security fixes in 2025. better-sqlite3 13 ships prebuilt binaries for every OS, so building no longer needs a C++/Python toolchain.
+- **Linux & macOS Builds**: Every release now also ships a .deb and an AppImage for Linux and an Apple Silicon build for macOS.
+- **Privacy Policy**: vashira.org/privacy.html describes exactly what leaves your computer and when.
+
+## [v10.1.0] - The Working Build
 - **Renderer Reconciliation**: Fixed a wide mismatch between the renderer's `window.vashiraAPI` calls and what `preload.ts` actually exposed — including a call on every launch to a method that didn't exist, which crashed React's effect phase with no boundary to catch it. Library loading, PDF import, item selection, and the custom window controls were all silently broken as a result.
 - **Deep Search Repair**: Fixed a schema mismatch (`search_index.fullText` vs a nonexistent `content` column) that silently broke full-text indexing on every single PDF import.
 - **Consensus Hardening**: The Consensus Registry now tracks distinct peers per vote instead of raw exchange count — one peer answering repeatedly could previously inflate a wrong title into apparent consensus. DOI'd items now defer to CrossRef instead of peer opinion. Also fixed the P2P metadata-request listener, which was bound to an event name (`discovery`) that was never actually emitted.

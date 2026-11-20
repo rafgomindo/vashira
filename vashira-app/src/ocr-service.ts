@@ -1,6 +1,6 @@
 import { createWorker } from 'tesseract.js';
 const pdf = require('pdf-parse');
-import * as pdfjs from 'pdfjs-dist';
+// (pdfjs-dist is loaded lazily by pdf-text.ts; a static import here would force-load the ESM package at startup)
 
 export class OCRService {
   private worker: any = null;

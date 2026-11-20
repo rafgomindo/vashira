@@ -18,6 +18,7 @@ import SettingsUI from './components/SettingsUI';
 import Scribe from './components/Scribe';
 import SharedVault from './components/SharedVault';
 import Tour from './components/Tour';
+import SharingPrompt from './components/SharingPrompt';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('library');
@@ -30,6 +31,8 @@ export default function App() {
   
   // Feature States
   const [communityMode, setCommunityMode] = useState(false);
+  // LAN sharing opt-in: null = still loading, undefined = never asked yet.
+  const [shareOnLan, setShareOnLan] = useState<boolean | undefined | null>(null);
   const [natStatus, setNatStatus] = useState<string | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'alert'} | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -49,7 +52,7 @@ export default function App() {
   // Collections & Tags
   const [collections, setCollections] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
-  const [libraryFilter, setLibraryFilter] = useState<{ type: 'all' | 'collection' | 'tag'; id?: number; label?: string }>({ type: 'all' });
+  const [libraryFilter, setLibraryFilter] = useState<{ type: 'all' | 'collection' | 'tag' | 'trash'; id?: number; label?: string }>({ type: 'all' });
   const [displayedItems, setDisplayedItems] = useState<any[]>([]);
 
   // Reader States
@@ -79,10 +82,56 @@ export default function App() {
       loadItems();
     });
 
+    // Background (re-)indexing of PDF text — a persistent toast while it runs.
+    const unsubscribeIndex = (window as any).vashiraAPI.onIndexProgress(({ done, total }: { done: number; total: number }) => {
+      if (done < total) {
+        setToast({ message: `Indexing PDF text: ${done}/${total}…`, type: 'success' });
+      } else {
+        showToast(`Full-text search ready (${total} PDF${total === 1 ? '' : 's'} indexed).`);
+      }
+    });
+
     return () => {
       if (unsubscribeIngested) unsubscribeIngested();
+      if (unsubscribeIndex) unsubscribeIndex();
     };
   }, []);
+
+  const chooseLanSharing = async (share: boolean) => {
+    await (window as any).vashiraAPI.setSetting('shareOnLan', share);
+    setShareOnLan(share);
+    showToast(share ? 'Sharing with Vashira users on your network.' : 'Kept private. Change it anytime in Settings.');
+  };
+
+  const handleTrashItem = async (itemId: number) => {
+    await (window as any).vashiraAPI.trashItem(itemId);
+    setIsDetailsOpen(false);
+    setSelectedItem(null);
+    showToast('Moved to Trash. Restore it from Trash in the sidebar.');
+    loadItems();
+  };
+
+  // Re-query the Trash view after a change there (the flat `items` list excludes trashed items).
+  const refreshTrash = async () => setDisplayedItems(await (window as any).vashiraAPI.getTrashedItems());
+
+  const handleRestoreItem = async (itemId: number) => {
+    await (window as any).vashiraAPI.restoreItem(itemId);
+    showToast('Restored to your library.');
+    await refreshTrash();
+    loadItems();
+  };
+
+  const handleDeleteForever = async (itemId: number) => {
+    await (window as any).vashiraAPI.emptyTrash([itemId]);
+    showToast('Deleted permanently.');
+    refreshTrash();
+  };
+
+  const handleEmptyTrash = async () => {
+    const n = await (window as any).vashiraAPI.emptyTrash();
+    showToast(`Trash emptied (${n} item${n === 1 ? '' : 's'} deleted).`);
+    refreshTrash();
+  };
 
   const loadItems = async () => {
     try {
@@ -93,12 +142,32 @@ export default function App() {
     }
   };
 
-  const loadConfigs = () => {
-    const savedOracle = localStorage.getItem('vashira_oracle_config');
-    if (savedOracle) setOracleConfig(JSON.parse(savedOracle));
+  const loadConfigs = async () => {
+    const api = (window as any).vashiraAPI;
+    // API keys live in the main process, encrypted with the OS keychain. Older
+    // versions kept them in plaintext localStorage: move them over once.
+    for (const [name, key, setter] of [
+      ['oracle', 'vashira_oracle_config', setOracleConfig],
+      ['zotero', 'vashira_zotero_config', setZoteroConfig],
+    ] as const) {
+      try {
+        const legacy = localStorage.getItem(key);
+        if (legacy) {
+          await api.setSecret(name, JSON.parse(legacy));
+          localStorage.removeItem(key);
+        }
+        const saved = await api.getSecret(name);
+        if (saved) (setter as (v: any) => void)(saved);
+      } catch (e) {
+        console.error(`Failed to load ${name} config:`, e);
+      }
+    }
 
-    const savedZotero = localStorage.getItem('vashira_zotero_config');
-    if (savedZotero) setZoteroConfig(JSON.parse(savedZotero));
+    try {
+      setShareOnLan(await api.getSetting('shareOnLan'));
+    } catch {
+      setShareOnLan(false);
+    }
 
     const cm = localStorage.getItem('vashira_community_mode') === 'true';
     setCommunityMode(cm);
@@ -130,6 +199,8 @@ export default function App() {
           setDisplayedItems(await (window as any).vashiraAPI.getItemsByCollection(libraryFilter.id));
         } else if (libraryFilter.type === 'tag' && libraryFilter.id != null) {
           setDisplayedItems(await (window as any).vashiraAPI.getItemsByTag(libraryFilter.id));
+        } else if (libraryFilter.type === 'trash') {
+          setDisplayedItems(await (window as any).vashiraAPI.getTrashedItems());
         } else {
           setDisplayedItems(items);
         }
@@ -219,6 +290,7 @@ export default function App() {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
+      await (window as any).vashiraAPI.setSecret('zotero', zoteroConfig);
       const result = await (window as any).vashiraAPI.syncZotero(zoteroConfig.userId, zoteroConfig.apiKey);
       if (result.success) {
         showToast(`Sync Complete: ${result.count} new item(s) added.`);
@@ -295,6 +367,10 @@ export default function App() {
             onExportBibTeX={handleExportBibTeX}
             onImportBibTeX={handleImportBibTeX}
             onImportRIS={handleImportRIS}
+            isTrash={libraryFilter.type === 'trash'}
+            onRestoreItem={handleRestoreItem}
+            onDeleteForever={handleDeleteForever}
+            onEmptyTrash={handleEmptyTrash}
           />
         )}
 
@@ -330,10 +406,12 @@ export default function App() {
               setNatStatus(s ? (result?.nat ? 'Mesh Active • NAT Mapped' : 'Mesh Active • Manual Port Forward Required') : 'P2P Standby');
             }}
             onSyncZotero={handleSync}
-            onSaveOracle={() => {
-              localStorage.setItem('vashira_oracle_config', JSON.stringify(oracleConfig));
-              showToast('Oracle Config Persisted.');
+            onSaveOracle={async () => {
+              await (window as any).vashiraAPI.setSecret('oracle', oracleConfig);
+              showToast('Oracle config saved (encrypted).');
             }}
+            shareOnLan={shareOnLan === true}
+            onToggleShareOnLan={() => chooseLanSharing(shareOnLan !== true)}
             isSyncing={isSyncing}
             natStatus={natStatus}
             citationStyle={citationStyle}
@@ -372,6 +450,8 @@ export default function App() {
              navigator.clipboard.writeText(cite);
              showToast(`${citationStyle.toUpperCase()} citation copied.`);
           }}
+          onTrash={() => selectedItem && handleTrashItem(selectedItem.id)}
+          isTrashed={!!selectedItem?.deletedAt}
           dupes={dupes}
           collections={collections}
           onAddToCollection={handleAddItemToCollection}
@@ -407,8 +487,12 @@ export default function App() {
           items={items}
           onSelectItem={handleSelectItem}
           onFinish={() => setShowTour(false)}
+          onLanSharingChoice={chooseLanSharing}
         />
       )}
+
+      {/* Asked once: new users answer inside the tour; anyone who never saw that step gets this. */}
+      {shareOnLan === undefined && !showTour && <SharingPrompt onChoose={chooseLanSharing} />}
     </div>
   );
 }

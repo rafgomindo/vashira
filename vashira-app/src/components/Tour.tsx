@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
+import { LAN_SHARING_QUESTION, LAN_SHARING_EXPLAINER, SharingChoiceButtons } from './SharingPrompt';
 
 interface TourStep {
   target: string | null; // matches a [data-tour="..."] element, or null to center on screen
   tab?: string;           // switch to this sidebar tab before measuring the target
   requiresItem?: boolean; // this target only exists once an item is selected in the detail panel
+  choice?: 'lan-sharing'; // the step asks a question; answering it advances the tour
   title: string;
   body: string;
 }
@@ -39,10 +41,23 @@ const STEPS: TourStep[] = [
     body: 'Shows whether you’re on Sovereign LAN (local network only) or Global Mesh (peers across the internet, via Settings). Only bibliographic metadata is ever exchanged here — never files.'
   },
   {
+    target: 'p2p-status',
+    tab: 'library',
+    choice: 'lan-sharing',
+    title: LAN_SHARING_QUESTION,
+    body: LAN_SHARING_EXPLAINER
+  },
+  {
     target: 'search',
     tab: 'library',
     title: 'Search your library',
-    body: 'Filters by title or author as you type, live.'
+    body: 'Filters by title or author as you type — and from 3 letters on, also searches the full text inside your PDFs, showing the page number and the matching passage. Accents don’t matter.'
+  },
+  {
+    target: 'trash',
+    tab: 'library',
+    title: 'Trash',
+    body: 'Deleted items land here first. Restore anything you removed by mistake, or empty the Trash to delete items and their stored files for good.'
   },
   {
     target: 'library-toolbar-extra',
@@ -92,8 +107,8 @@ const STEPS: TourStep[] = [
     target: 'detail-actions',
     tab: 'library',
     requiresItem: true,
-    title: 'Commit, cite, graphify',
-    body: 'COMMIT UPDATES saves your edits. The pen icon copies a formatted citation (style set in Settings). For .docx files, a GRAPHIFY button also appears here.'
+    title: 'Commit, cite, trash, graphify',
+    body: 'COMMIT UPDATES saves your edits. The pen icon copies a formatted citation (style set in Settings), and the bin moves the item to the Trash. For .docx files, a GRAPHIFY button also appears here.'
   },
   {
     target: 'peers-list',
@@ -168,9 +183,10 @@ interface TourProps {
   items: any[];
   onSelectItem: (item: any) => void;
   onFinish: () => void;
+  onLanSharingChoice: (share: boolean) => void;
 }
 
-const Tour: React.FC<TourProps> = ({ activeTab, onNavigate, items, onSelectItem, onFinish }) => {
+const Tour: React.FC<TourProps> = ({ activeTab, onNavigate, items, onSelectItem, onFinish, onLanSharingChoice }) => {
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const selectedForTour = useRef(false);
@@ -250,6 +266,12 @@ const Tour: React.FC<TourProps> = ({ activeTab, onNavigate, items, onSelectItem,
         </div>
         <p style={{ fontSize: '0.85rem', lineHeight: 1.6, opacity: 0.75, marginBottom: '16px' }}>{current.body}</p>
 
+        {current.choice === 'lan-sharing' && (
+          <div style={{ marginBottom: '16px' }}>
+            <SharingChoiceButtons onChoose={(share) => { onLanSharingChoice(share); setStep(s => s + 1); }} />
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
           <div style={{ flex: 1, height: '4px', borderRadius: '2px', background: 'var(--border-glass)', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${((step + 1) / STEPS.length) * 100}%`, background: 'var(--accent-gradient)', transition: 'width 250ms' }} />
@@ -267,9 +289,12 @@ const Tour: React.FC<TourProps> = ({ activeTab, onNavigate, items, onSelectItem,
                 BACK
               </button>
             )}
-            <button className="btn-primary" style={{ padding: '9px 18px', fontSize: '0.75rem' }} onClick={() => (isLast ? finish() : setStep(s => s + 1))}>
-              {isLast ? 'FINISH' : 'NEXT'}
-            </button>
+            {/* A question step advances by answering it, so there's no NEXT that skips the choice. */}
+            {!current.choice && (
+              <button className="btn-primary" style={{ padding: '9px 18px', fontSize: '0.75rem' }} onClick={() => (isLast ? finish() : setStep(s => s + 1))}>
+                {isLast ? 'FINISH' : 'NEXT'}
+              </button>
+            )}
           </div>
         </div>
       </div>

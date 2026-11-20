@@ -15,6 +15,8 @@ interface SettingsUIProps {
   citationStyle: string;
   onChangeCitationStyle: (style: string) => void;
   onReplayTour: () => void;
+  shareOnLan: boolean;
+  onToggleShareOnLan: () => void;
 }
 
 const CITATION_STYLES = [
@@ -30,7 +32,8 @@ const SettingsUI: React.FC<SettingsUIProps> = ({
   onSyncZotero, onSaveOracle,
   isSyncing, natStatus,
   citationStyle, onChangeCitationStyle,
-  onReplayTour
+  onReplayTour,
+  shareOnLan, onToggleShareOnLan
 }) => {
   return (
     <div className="main-view fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px', overflowY: 'auto' }}>
@@ -89,6 +92,21 @@ const SettingsUI: React.FC<SettingsUIProps> = ({
                    style={{ borderColor: communityMode ? '#3b82f6' : 'var(--border-glass)', background: communityMode ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }}
                    onClick={() => onToggleCommunity(!communityMode)}>
                    {communityMode ? 'MESH ENABLED' : 'LAN ONLY'}
+                 </button>
+              </div>
+           </div>
+
+           <div data-tour="settings-lan-sharing" className="glass" style={{ padding: '20px', borderRadius: '16px', background: 'rgba(167, 139, 250, 0.05)', border: '1px solid var(--border-glass)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                 <div>
+                    <h4 style={{ fontSize: '0.9rem', fontWeight: 700 }}>SHARE ON MY NETWORK</h4>
+                    <p style={{ fontSize: '0.75rem', opacity: 0.5 }}>Announce titles/DOIs of what you add to Vashira users on your network, and answer their metadata requests. Never files.</p>
+                 </div>
+                 <button
+                   className={`btn-secondary ${shareOnLan ? 'active' : ''}`}
+                   style={{ flexShrink: 0, borderColor: shareOnLan ? 'var(--accent-primary)' : 'var(--border-glass)', background: shareOnLan ? 'rgba(167, 139, 250, 0.1)' : 'transparent' }}
+                   onClick={onToggleShareOnLan}>
+                   {shareOnLan ? 'SHARING' : 'PRIVATE'}
                  </button>
               </div>
            </div>

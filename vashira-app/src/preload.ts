@@ -28,6 +28,20 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   getInstalledStyles: () => ipcRenderer.invoke('get-installed-styles'),
   installStyle: (styleName: string) => ipcRenderer.invoke('install-style', styleName),
   searchDeep: (query: string) => ipcRenderer.invoke('search-deep', query),
+  searchFullText: (query: string) => ipcRenderer.invoke('search-fulltext', query),
+  onIndexProgress: (callback: (p: { done: number; total: number }) => void) => {
+    const listener = (_: any, p: any) => callback(p);
+    ipcRenderer.on('index-progress', listener);
+    return () => ipcRenderer.removeListener('index-progress', listener);
+  },
+  getSetting: (key: string) => ipcRenderer.invoke('get-setting', key),
+  setSetting: (key: string, value: unknown) => ipcRenderer.invoke('set-setting', key, value),
+  getSecret: (name: string) => ipcRenderer.invoke('get-secret', name),
+  setSecret: (name: string, value: unknown) => ipcRenderer.invoke('set-secret', name, value),
+  trashItem: (itemId: number) => ipcRenderer.invoke('trash-item', itemId),
+  restoreItem: (itemId: number) => ipcRenderer.invoke('restore-item', itemId),
+  getTrashedItems: () => ipcRenderer.invoke('get-trashed-items'),
+  emptyTrash: (ids?: number[]) => ipcRenderer.invoke('empty-trash', ids),
   getAllTags: () => ipcRenderer.invoke('get-all-tags'),
   createTag: (name: string) => ipcRenderer.invoke('create-tag', name),
   addTagToItem: (itemId: number, tagId: number) => ipcRenderer.invoke('add-tag-to-item', itemId, tagId),

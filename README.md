@@ -26,8 +26,8 @@ Vashira creates a **Mastery Vault** with **Decentralized P2P Synapse**, **AI RAG
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
-- Python (for `better-sqlite3` native builds)
+- Node.js 22.12 or newer (required by Electron 44)
+- No C++/Python toolchain needed: `better-sqlite3` ships prebuilt binaries for Windows, macOS and Linux
 
 ### Installation
 1. Clone the repository:
@@ -46,19 +46,26 @@ Vashira creates a **Mastery Vault** with **Decentralized P2P Synapse**, **AI RAG
    npm start
    ```
 
+### 📥 Download
+
+Get the latest version from the [releases page](https://github.com/rafgomindo/vashira/releases).
+
+- **Windows**: download `Vashira-Portable-…-win32-x64.zip`, unzip it anywhere, and run `Vashira.exe`. Windows may show a SmartScreen warning the first time ("More info" → "Run anyway") because the app isn't code-signed. A Microsoft Store version without that warning is on the way.
+- **macOS (Apple Silicon)**: download `Vashira-…-macos-arm64.zip`, unzip it, and move `Vashira.app` to Applications. The app isn't notarized by Apple, so the first launch is blocked: open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or, in Terminal: `xattr -cr /Applications/Vashira.app`.)
+- **Linux**: the `.deb` is recommended for Ubuntu/Debian (`sudo apt install ./vashira_….deb`). The `.AppImage` runs without installing (`chmod +x` it first). If the AppImage won't start on Ubuntu 24.04 or newer, run it with `--no-sandbox`, or use the `.deb` instead.
+
+What Vashira sends over the network, and when, is described in the [privacy policy](https://vashira.org/privacy.html).
+
 ### 🛠️ Distribution & Building
 
-To generate your own installers and portable versions for your OS:
+CI (`.github/workflows/release.yml`) builds all three platforms on every `v*` tag push and publishes one GitHub Release. A manual run from the Actions tab builds everything without publishing. Each OS builds on its own runner, because native modules can't be cross-packaged.
 
-#### Windows
-- **Portable Version (recommended)**: `npm run package` -> Assembles the standalone app in `out/Vashira-win32-x64/`. Zip that folder for distribution — this is what the [releases page](https://github.com/rafgomindo/vashira/releases) ships, and what CI (`.github/workflows/release.yml`) builds automatically on a version tag push.
-- **Installer (.exe)**: `npm run make` targets a Squirrel installer, but it's currently unsigned (no code-signing certificate — one costs money and isn't set up yet) and its zip-maker step fails on newer Node.js versions (`cross-zip` calls a removed `fs.rmdir` option). Until both are sorted, the portable build above is the real distribution path.
+To build locally (from `vashira-app/`):
+- **Windows portable**: `npm run package` → `out/Vashira-win32-x64/`. Zip that folder.
+- **macOS** (on a Mac): `npm run package` → `out/Vashira-darwin-arm64/Vashira.app`.
+- **Linux** (on Linux): `npm run build && npx electron-forge make --targets @electron-forge/maker-deb,@reforged/maker-appimage` → `out/make/`.
 
-#### macOS
-To build for macOS, you must be on a Mac (or using a CI/CD environment with macOS):
-- **Apple Silicon/Intel App**: `npm run make` -> Generates `.dmg` or `.zip` to `out/make/zip/darwin/`
-
-> **Note**: Building cross-platform installers (like a `.dmg` from Windows) typically requires specialized tooling or cloud runners. Standard `npm run make` targets your current OS.
+> The Squirrel `.exe` installer (`npm run make` on Windows) isn't used: it would be unsigned, and its zip step fails on current Node.js. Warning-free Windows installs will come from the Microsoft Store instead. See [ROADMAP.md](ROADMAP.md).
 
 ## ⚖️ License & Philosophy
 The name **वशीर (Vaśīra)** is derived from Sanskrit, meaning *"The one who possesses mastery"*. Vashira is built on the principle that your research is your own dominion.

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Network, PenTool, ShieldCheck, Plus, ChevronRight, FileText, Users, RefreshCw, Tag as TagIcon, FolderClosed } from 'lucide-react';
+import { X, Network, PenTool, ShieldCheck, Plus, ChevronRight, FileText, Users, RefreshCw, Tag as TagIcon, FolderClosed, Trash2 } from 'lucide-react';
 
 interface KnowledgeHubProps {
   selectedItem: any;
@@ -15,6 +15,8 @@ interface KnowledgeHubProps {
   onAddTag: (itemId: number, tagName: string) => Promise<void> | void;
   onRemoveTag: (itemId: number, tagId: number) => Promise<void> | void;
   onFetchFromCrossRef: () => void;
+  onTrash: () => void;
+  isTrashed?: boolean;
 }
 
 const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
@@ -30,7 +32,9 @@ const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
   onAddToCollection,
   onAddTag,
   onRemoveTag,
-  onFetchFromCrossRef
+  onFetchFromCrossRef,
+  onTrash,
+  isTrashed = false
 }) => {
   const [consensus, setConsensus] = useState<any[]>([]);
   const [itemTags, setItemTags] = useState<any[]>([]);
@@ -242,7 +246,10 @@ const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
       <footer style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div data-tour="detail-actions" style={{ display: 'flex', gap: '12px' }}>
           <button className="btn-primary" style={{ flex: 1 }} onClick={onUpdate}>COMMIT UPDATES</button>
-          <button className="btn-secondary icon-btn-plain" style={{ padding: '12px' }} onClick={onCite}><PenTool size={18} /></button>
+          <button className="btn-secondary icon-btn-plain" style={{ padding: '12px' }} onClick={onCite} title="Copy citation"><PenTool size={18} /></button>
+          {!isTrashed && (
+            <button className="btn-secondary icon-btn-plain" style={{ padding: '12px' }} onClick={onTrash} title="Move to Trash"><Trash2 size={18} /></button>
+          )}
         </div>
 
         {selectedItem.filePath?.toLowerCase().endsWith('.docx') && (

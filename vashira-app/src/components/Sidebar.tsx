@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Library, Zap, Settings, Share2, Globe, HelpCircle, FolderClosed, Tag as TagIcon, Plus } from 'lucide-react';
+import { Library, Zap, Settings, Share2, Globe, HelpCircle, FolderClosed, Tag as TagIcon, Plus, Trash2 } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -8,8 +8,8 @@ interface SidebarProps {
   natStatus: string | null;
   collections: any[];
   tags: any[];
-  libraryFilter: { type: 'all' | 'collection' | 'tag'; id?: number; label?: string };
-  onSelectFilter: (f: { type: 'all' | 'collection' | 'tag'; id?: number; label?: string }) => void;
+  libraryFilter: { type: 'all' | 'collection' | 'tag' | 'trash'; id?: number; label?: string };
+  onSelectFilter: (f: { type: 'all' | 'collection' | 'tag' | 'trash'; id?: number; label?: string }) => void;
   onCreateCollection: (name: string) => void;
 }
 
@@ -118,6 +118,16 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, communityMod
             </button>
           ))}
         </div>
+
+        <button
+          data-tour="trash"
+          onClick={() => onSelectFilter({ type: 'trash', label: 'Trash' })}
+          className={`sidebar-nav-item ${activeTab === 'library' && libraryFilter.type === 'trash' ? 'active' : ''}`}
+          style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: '0.8rem', marginBottom: '12px' }}
+        >
+          <Trash2 size={14} />
+          <span>Trash</span>
+        </button>
       </div>
 
       <div data-tour="p2p-status" style={{ padding: '16px' }}>

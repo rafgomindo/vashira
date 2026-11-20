@@ -31,7 +31,13 @@ import {
   upsertConsensus,
   getConsensus,
   getItemsByCategory,
-  addFullText
+  addFullText,
+  searchFullText,
+  trashItem,
+  restoreItem,
+  getTrashedItems,
+  purgeTrashedItems,
+  isFileReferenced
 } from './database.js';
 import { StyleStore } from './styles.js';
 import { fetchMetadataFromDOI, extractDOIFromURL, extractDOIFromText, extractISBNFromText } from './gatherer.js';
@@ -41,12 +47,13 @@ import { captureSnapshot } from './archiver.js';
 import { CitationEngine, MINIMAL_APA_STYLE, MINIMAL_IEEE_STYLE, MINIMAL_MLA_STYLE } from './citation.js';
 import { askTheOracle } from './oracle.js';
 import { translatorService } from './translator-service.js';
-import { indexItemTask } from './indexer.js';
+import { indexItemTask, reindexLibrary } from './indexer.js';
 import { CommunityRelay } from './relay-service.js';
 import { NatService } from './nat-service.js';
 import { ocrService } from './ocr-service.js';
 import { scrapeDocx } from './scrapper.js';
 import { fetchZoteroLibrary, mapZoteroToVashira } from './zotero-service.js';
+import { getSetting, setSetting, getSecret, setSecret, SETTING_KEYS, SECRET_NAMES, SettingKey, SecretName } from './settings.js';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -80,7 +87,25 @@ const createWindow = () => {
 app.on('ready', () => {
   initDatabase();
   const styleStore = new StyleStore(app.getPath('userData'));
-  
+
+  // LAN sharing is opt-in: until the user says yes (first-run tour, or the one-time
+  // prompt for existing users), imports aren't announced and peer requests go unanswered.
+  discoveryEngine.setSharingEnabled(getSetting('shareOnLan') === true);
+
+  ipcMain.handle('get-setting', (_, key: SettingKey) => (SETTING_KEYS.includes(key) ? getSetting(key) : undefined));
+  ipcMain.handle('set-setting', (_, key: SettingKey, value: unknown) => {
+    if (!SETTING_KEYS.includes(key)) return false;
+    setSetting(key, value);
+    if (key === 'shareOnLan') discoveryEngine.setSharingEnabled(value === true);
+    return true;
+  });
+  ipcMain.handle('get-secret', (_, name: SecretName) => (SECRET_NAMES.includes(name) ? getSecret(name) : null));
+  ipcMain.handle('set-secret', (_, name: SecretName, value: unknown) => {
+    if (!SECRET_NAMES.includes(name)) return false;
+    setSecret(name, value);
+    return true;
+  });
+
   // IPC Handlers
   ipcMain.handle('get-items', () => getItems());
   ipcMain.handle('add-item', (_, item) => addItem(item));
@@ -130,23 +155,38 @@ app.on('ready', () => {
   ipcMain.handle('get-peers', () => discoveryEngine.getOnlinePeers());
   ipcMain.handle('get-discoveries', () => discoveryEngine.getLocalDiscoveries());
   
+  // OCR for scanned PDFs isn't implemented yet: ocrService.scanPdf only returns a
+  // placeholder string, which this handler used to write into the search index.
+  // Refuse honestly instead of indexing junk; no UI calls this today.
   ipcMain.handle('run-mastery-scan', async (_, itemId) => {
     const item = getItemById(itemId);
     if (!item || !item.filePath) return { success: false, error: 'File not found' };
-    
-    try {
-      const buffer = fs.readFileSync(item.filePath);
-      const results = await ocrService.scanPdf(buffer);
-      const fullText = results.join('\n');
-      
-      addFullText(itemId, fullText);
-      updateItem(itemId, { masteryStatus: 'indexed' });
-      
-      return { success: true, text: fullText };
-    } catch (e: any) {
-      console.error('[OCR] Mastery Scan Error:', e);
-      return { success: false, error: e.message };
+    return { success: false, error: 'OCR for scanned PDFs is not available yet.' };
+  });
+
+  // Full-text hits for the library search box: [{ itemId, hits: [{ page, snippet }] }]
+  ipcMain.handle('search-fulltext', (_, query: string) => searchFullText(query));
+
+  // Trash
+  ipcMain.handle('trash-item', (_, itemId: number) => { trashItem(itemId); return true; });
+  ipcMain.handle('restore-item', (_, itemId: number) => { restoreItem(itemId); return true; });
+  ipcMain.handle('get-trashed-items', () => getTrashedItems());
+  ipcMain.handle('empty-trash', (_, ids?: number[]) => {
+    const files = purgeTrashedItems(ids);
+    // Only delete files Vashira itself stored, and never one another item still uses.
+    const storageRoot = path.resolve(getStoragePath()) + path.sep;
+    for (const file of files) {
+      const resolved = path.resolve(file);
+      if (!resolved.startsWith(storageRoot) || isFileReferenced(file)) continue;
+      try {
+        fs.rmSync(resolved, { force: true });
+        const dir = path.dirname(resolved);
+        if (dir + path.sep !== storageRoot && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+      } catch (e) {
+        console.error('[Trash] Could not remove file:', resolved, e);
+      }
     }
+    return files.length;
   });
   
   // Vashira Sentinel: Local Ingest Server (Port 51239)
@@ -247,13 +287,14 @@ app.on('ready', () => {
     const sourcePath = filePaths[0];
     const fileName = path.basename(sourcePath);
     const storagePath = getStoragePath();
-    const destPath = path.join(storagePath, fileName);
 
     try {
       if (!fs.existsSync(storagePath)) fs.mkdirSync(storagePath, { recursive: true });
-      await fs.promises.copyFile(sourcePath, destPath);
 
-      const handle = await fs.promises.open(destPath, 'r');
+      // NOTE: fileHash is the SHA-256 of the first 20 KB, and it doubles as the P2P
+      // identifier — don't change how it's computed, or peers on older versions
+      // stop matching.
+      const handle = await fs.promises.open(sourcePath, 'r');
       const { buffer } = await handle.read(Buffer.alloc(20000), 0, 20000, 0);
       await handle.close();
 
@@ -284,9 +325,16 @@ app.on('ready', () => {
         };
       }
 
+      // Each attachment gets its own folder (vashira_storage/<itemId>/<name>): files used
+      // to be copied flat, so two PDFs with the same name overwrote each other.
+      const itemId = await addItem({ ...metadata, fileHash });
+      const destDir = path.join(storagePath, String(itemId));
+      await fs.promises.mkdir(destDir, { recursive: true });
+      const destPath = path.join(destDir, fileName);
+      await fs.promises.copyFile(sourcePath, destPath);
+      updateItem(itemId as number, { filePath: destPath });
       const indexedItem = { ...metadata, filePath: destPath, fileHash };
-      const itemId = await addItem(indexedItem);
-      
+
       if (indexedItem.doi || indexedItem.fileHash) {
         discoveryEngine.announceMetadata(indexedItem.doi || indexedItem.fileHash, indexedItem.title, itemId as number);
       }
@@ -543,11 +591,20 @@ app.on('ready', () => {
     }
   });
 
-  providerServer.listen(51236, () => {
+  // Loopback only: this endpoint is for tools on the same computer.
+  providerServer.listen(51236, '127.0.0.1', () => {
     console.log('[Main] Vashira AI Provider active on port 51236');
   });
 
   createWindow();
+
+  // One-time (per extractor version) background pass that replaces the old junk
+  // full text with real per-page text; progress shows up as a toast in the UI.
+  setTimeout(() => {
+    reindexLibrary((done, total) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('index-progress', { done, total });
+    }).catch(e => console.error('[Deep Search] Library re-index failed:', e));
+  }, 3000);
 
   const snatcher = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -644,7 +701,10 @@ app.on('ready', () => {
       });
     } else { res.writeHead(404); res.end(); }
   });
-  snatcher.listen(51235, '0.0.0.0');
+  // Loopback only. This used to listen on 0.0.0.0, which let anyone on the same
+  // network read the whole library (GET /items, file paths included) and add items.
+  // Every extension / Office add-in client talks to localhost / 127.0.0.1.
+  snatcher.listen(51235, '127.0.0.1');
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

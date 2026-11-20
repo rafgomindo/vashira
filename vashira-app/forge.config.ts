@@ -3,6 +3,7 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
+import { MakerAppImage } from '@reforged/maker-appimage';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
@@ -14,14 +15,31 @@ const config: ForgeConfig = {
     asar: true,
     icon: path.join(__dirname, 'assets', 'icons', 'icon'), 
   },
-  rebuildConfig: {},
+  // better-sqlite3 >= 13 ships Node-API prebuilds for every platform (prebuilds/<platform>-<arch>.node),
+  // which load in any Electron version — compiling it from source is unnecessary and needs a C++ toolchain.
+  rebuildConfig: { ignoreModules: ['better-sqlite3'] },
   makers: [
     new MakerSquirrel({
       setupIcon: path.join(__dirname, 'assets', 'icons', 'icon.ico'), // Installer icon for Windows
     }),
     new MakerZIP({}, ['win32', 'darwin']),
     new MakerRpm({}),
-    new MakerDeb({}),
+    // Linux: .deb is the primary download (it installs Chromium's sandbox helper
+    // correctly); the AppImage is the no-install alternative. Both are built on an
+    // Ubuntu runner by .github/workflows/release.yml.
+    new MakerDeb({
+      options: {
+        icon: path.join(__dirname, 'assets', 'icons', '512x512.png'),
+        categories: ['Education', 'Office'],
+        homepage: 'https://github.com/rafgomindo/vashira',
+      },
+    }),
+    new MakerAppImage({
+      options: {
+        icon: path.join(__dirname, 'assets', 'icons', '512x512.png'),
+        categories: ['Education', 'Office'],
+      },
+    }, ['linux']),
   ],
   plugins: [
     new FusesPlugin({
