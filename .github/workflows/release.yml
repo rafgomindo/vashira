@@ -36,7 +36,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      # --ignore-scripts: better-sqlite3 ships prebuilt binaries; letting npm try to
+      # compile it from source fails on runners (and isn't needed).
+      - run: npm ci --ignore-scripts
       - name: Build portable package
         run: npm run package
       - name: Zip portable build
@@ -56,7 +58,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      # --ignore-scripts: better-sqlite3 ships prebuilt binaries; letting npm try to
+      # compile it from source fails on runners (and isn't needed).
+      - run: npm ci --ignore-scripts
       - name: Build .deb and AppImage
         run: |
           npm run build
@@ -81,7 +85,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      # --ignore-scripts: better-sqlite3 ships prebuilt binaries; letting npm try to
+      # compile it from source fails on runners (and isn't needed).
+      - run: npm ci --ignore-scripts
       - name: Build app bundle
         run: npm run package
       - name: Zip app bundle

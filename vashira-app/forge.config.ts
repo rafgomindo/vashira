@@ -27,8 +27,11 @@ const config: ForgeConfig = {
     // Linux: .deb is the primary download (it installs Chromium's sandbox helper
     // correctly); the AppImage is the no-install alternative. Both are built on an
     // Ubuntu runner by .github/workflows/release.yml.
+    // `bin`: the packaged executable is named after productName ("Vashira"), but
+    // both Linux makers default to the lowercase package name.
     new MakerDeb({
       options: {
+        bin: 'Vashira',
         icon: path.join(__dirname, 'assets', 'icons', '512x512.png'),
         categories: ['Education', 'Office'],
         homepage: 'https://github.com/rafgomindo/vashira',
@@ -36,6 +39,7 @@ const config: ForgeConfig = {
     }),
     new MakerAppImage({
       options: {
+        bin: 'Vashira',
         icon: path.join(__dirname, 'assets', 'icons', '512x512.png'),
         categories: ['Education', 'Office'],
       },
