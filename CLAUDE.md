@@ -29,7 +29,7 @@ npm start                 # build then launch the Electron app (electron-forge s
 npm run build              # build:main + build:preload + build:renderer (esbuild + a custom script)
 npm run lint                # eslint --ext .ts,.tsx .
 npm run package              # build + electron-forge package → portable app dir in out/Vashira-<platform>-x64/
-npm run install:local        # Windows: package, copy to %LOCALAPPDATA%ProgramsVashira, Start menu + desktop shortcuts
+npm run install:local        # Windows: package, copy to %LOCALAPPDATA%\Programs\Vashira, Start menu + desktop shortcuts
 ```
 
 There is **no test suite** in this repository (no test runner is configured, no `*.test.*`/`*.spec.*` files exist). To sanity-check logic that touches `better-sqlite3` without opening a window, see "Headless verification" below. `npx tsc --noEmit` is broken independently of any change (TypeScript is pinned at 4.5, too old for the tsconfig and current `@types/node`) — `npm run build` (esbuild, no type-check) is the build check.
