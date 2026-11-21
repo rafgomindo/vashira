@@ -25,8 +25,8 @@ const STEPS: TourStep[] = [
   {
     target: 'nav',
     tab: 'library',
-    title: 'Five screens, always here',
-    body: 'Library holds what you’ve mastered. Shared Vault shows peers and P2P discoveries. The Oracle answers questions over your own library. Scribe is a citation-aware markdown editor. Settings configures all of it.'
+    title: 'Six screens, always here',
+    body: 'Library holds what you’ve mastered. Discover finds new papers in OpenAlex. Shared Vault shows peers and P2P discoveries. The Oracle answers questions over your own library. Scribe is a citation-aware markdown editor. Settings configures all of it.'
   },
   {
     target: 'collections',
@@ -52,6 +52,18 @@ const STEPS: TourStep[] = [
     tab: 'library',
     title: 'Search your library',
     body: 'Filters by title or author as you type — and from 3 letters on, also searches the full text inside your PDFs, showing the page number and the matching passage. Accents don’t matter.'
+  },
+  {
+    target: 'discover-search',
+    tab: 'discover',
+    title: 'Discover new papers',
+    body: 'Search 250+ million works in OpenAlex, a free and open scholarly database. Click a title to read its abstract; Add puts it in your library, and Add with PDF also downloads the free, legal open-access copy when one exists.'
+  },
+  {
+    target: 'discover-suggestions',
+    tab: 'discover',
+    title: 'What your library keeps citing',
+    body: 'Analyzes the papers in your library that have a DOI and lists the works several of them cite that you don’t have yet — often the classics of your field.'
   },
   {
     target: 'duplicates',
@@ -108,6 +120,13 @@ const STEPS: TourStep[] = [
     tab: 'library',
     title: 'Peer Consensus & CrossRef',
     body: 'Two different trust sources, shown only when relevant: items with a DOI get a “Verify via CrossRef” button (the real authority). Items without one show “Peer Consensus” once 2+ distinct peers corroborate a different title/author — click Apply to accept it.'
+  },
+  {
+    target: 'detail-related',
+    tab: 'library',
+    requiresItem: true,
+    title: 'Related papers',
+    body: 'For any item, see what it cites, who cites it (most-cited first) and similar work, straight from OpenAlex — and add any of them in one click.'
   },
   {
     target: 'detail-actions',

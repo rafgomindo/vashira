@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import RelatedPanel from './RelatedPanel';
 import { X, Network, PenTool, ShieldCheck, Plus, ChevronRight, FileText, Users, RefreshCw, Tag as TagIcon, FolderClosed, Trash2 } from 'lucide-react';
 
 interface KnowledgeHubProps {
@@ -18,6 +19,9 @@ interface KnowledgeHubProps {
   onTrash: () => void;
   isTrashed?: boolean;
   onReviewDuplicates: () => void;
+  onDiscoveryAdded: (itemId: number, info: any) => void;
+  onOpenItem: (itemId: number) => void;
+  onError: (message: string) => void;
 }
 
 const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
@@ -36,7 +40,10 @@ const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
   onFetchFromCrossRef,
   onTrash,
   isTrashed = false,
-  onReviewDuplicates
+  onReviewDuplicates,
+  onDiscoveryAdded,
+  onOpenItem,
+  onError
 }) => {
   const [consensus, setConsensus] = useState<any[]>([]);
   const [itemTags, setItemTags] = useState<any[]>([]);
@@ -210,6 +217,10 @@ const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
           </div>
         </section>
         </div>
+
+        {!isTrashed && selectedItem.id && (
+          <RelatedPanel itemId={selectedItem.id} onAdded={onDiscoveryAdded} onOpenItem={onOpenItem} onError={onError} />
+        )}
 
         {isDoiItem ? (
           <section className="details-section">

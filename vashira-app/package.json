@@ -1,7 +1,7 @@
 {
   "name": "vashira",
   "productName": "Vashira",
-  "version": "10.2.0",
+  "version": "10.3.0",
   "description": "European Open-Source Research Program - Master your Research",
   "main": ".vite/build/main.js",
   "private": true,

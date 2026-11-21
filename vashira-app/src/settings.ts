@@ -11,9 +11,9 @@ import path from 'node:path';
  */
 
 export type SettingKey = 'shareOnLan';
-export type SecretName = 'oracle' | 'zotero';
+export type SecretName = 'oracle' | 'zotero' | 'openalex';
 export const SETTING_KEYS: SettingKey[] = ['shareOnLan'];
-export const SECRET_NAMES: SecretName[] = ['oracle', 'zotero'];
+export const SECRET_NAMES: SecretName[] = ['oracle', 'zotero', 'openalex'];
 
 type SettingsFile = { [K in SettingKey]?: unknown } & { secrets?: Record<string, string> };
 

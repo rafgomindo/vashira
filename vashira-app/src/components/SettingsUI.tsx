@@ -1,5 +1,35 @@
-import React from 'react';
-import { Globe, ShieldCheck, RefreshCw, Zap, Shield, Key, BookMarked, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Globe, ShieldCheck, RefreshCw, Zap, Shield, Key, BookMarked, Sparkles, Compass } from 'lucide-react';
+
+/** Optional OpenAlex API key (free) — raises the daily Discover budget 10×. Stored encrypted. */
+const OpenAlexKeyCard: React.FC = () => {
+  const [key, setKey] = useState('');
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    (window as any).vashiraAPI.getSecret('openalex').then((v: any) => setKey(v?.key || '')).catch(() => {});
+  }, []);
+  const save = async () => {
+    await (window as any).vashiraAPI.setSecret('openalex', { key: key.trim() });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+  return (
+    <div data-tour="settings-openalex" className="glass-card scale-up" style={{ animationDelay: '0.12s' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+        <Compass size={24} color="var(--accent-primary)" />
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>DISCOVER (OPENALEX)</h3>
+      </div>
+      <p style={{ fontSize: '0.8rem', opacity: 0.6, marginBottom: '16px', lineHeight: 1.6 }}>
+        Discover works without a key. Heavy use can hit OpenAlex’s free daily limit; a free key from openalex.org (Settings → API key) gives 10× more. Optional.
+      </p>
+      <label className="details-label">OpenAlex API key (optional)</label>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input className="glass-input" type="password" value={key} onChange={e => setKey(e.target.value)} placeholder="Leave empty to use the free no-key tier" />
+        <button className="btn-secondary" onClick={save}>{saved ? 'SAVED' : 'SAVE'}</button>
+      </div>
+    </div>
+  );
+};
 
 interface SettingsUIProps {
   oracleConfig: any;
@@ -118,6 +148,8 @@ const SettingsUI: React.FC<SettingsUIProps> = ({
            </button>
         </div>
       </div>
+
+      <OpenAlexKeyCard />
 
       <div data-tour="settings-citation" className="glass-card scale-up" style={{ animationDelay: '0.15s' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>

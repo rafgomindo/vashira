@@ -49,6 +49,7 @@ import { askTheOracle } from './oracle.js';
 import { translatorService } from './translator-service.js';
 import { indexItemTask, reindexLibrary } from './indexer.js';
 import { identifyPdf, looksLikeJunkTitle } from './pdf-metadata.js';
+import { relatedForItem, searchWorks, librarySuggestions, setOpenAlexKey, Candidate } from './openalex.js';
 import { CommunityRelay } from './relay-service.js';
 import { NatService } from './nat-service.js';
 import { ocrService } from './ocr-service.js';
@@ -102,9 +103,11 @@ app.on('ready', () => {
     return true;
   });
   ipcMain.handle('get-secret', (_, name: SecretName) => (SECRET_NAMES.includes(name) ? getSecret(name) : null));
+  setOpenAlexKey(getSecret('openalex')?.key);
   ipcMain.handle('set-secret', (_, name: SecretName, value: unknown) => {
     if (!SECRET_NAMES.includes(name)) return false;
     setSecret(name, value);
+    if (name === 'openalex') setOpenAlexKey((value as any)?.key);
     return true;
   });
 
@@ -168,6 +171,35 @@ app.on('ready', () => {
 
   // Full-text hits for the library search box: [{ itemId, hits: [{ page, snippet }] }]
   ipcMain.handle('search-fulltext', (_, query: string) => searchFullText(query));
+
+  // Discovery (v10.3, OpenAlex). Errors come back as { error } so the UI can show
+  // "limit reached" / "offline" without a thrown IPC exception.
+  const safe = async <T>(fn: () => Promise<T>) => {
+    try { return await fn(); } catch (e: any) {
+      const offline = /fetch failed|ENOTFOUND|ETIMEDOUT|ECONNREFUSED/i.test(String(e?.message) + String(e?.cause?.code));
+      return { error: offline ? 'Can’t reach OpenAlex — check your internet connection.' : (e?.message || 'Discovery failed.') };
+    }
+  };
+  ipcMain.handle('discovery-related', (_, itemId: number) => safe(async () => {
+    const item = getItemById(itemId);
+    if (!item) throw new Error('Item not found');
+    return relatedForItem(item);
+  }));
+  ipcMain.handle('discovery-search', (_, query: string) => safe(() => searchWorks(query)));
+  ipcMain.handle('discovery-suggestions', () => safe(() => librarySuggestions()));
+  ipcMain.handle('discovery-add', (_, c: Candidate, opts: { withPdf?: boolean } = {}) => safe(async () => {
+    const fields = {
+      title: c.title, authors: c.authors, published: c.published, doi: c.doi, journal: c.journal,
+      itemType: c.itemType, abstract: c.abstract, volume: c.volume, issue: c.issue, pages: c.pages, publisher: c.publisher,
+    };
+    const existing = findExactDuplicatesFor(fields)[0];
+    if (existing) return { itemId: existing.id, alreadyInLibrary: true };
+    const itemId = Number(await addItem(fields));
+    let pdf: string | null = null;
+    if (opts.withPdf && c.oaPdfUrl) pdf = await downloadOaPdf(itemId, c.oaPdfUrl, c.title).catch(e => (console.warn('[Discovery] PDF download failed:', e), null));
+    // pdf: undefined = not requested, false = requested but the host blocked it / served a web page.
+    return { itemId, pdf: opts.withPdf ? !!pdf : undefined };
+  }));
 
   // Trash
   ipcMain.handle('trash-item', (_, itemId: number) => { trashItem(itemId); return true; });
@@ -769,6 +801,28 @@ async function repairJunkMetadata(): Promise<number> {
     }
   }
   return fixed;
+}
+
+/**
+ * Downloads a legal open-access PDF (a URL OpenAlex lists as an OA location) straight
+ * from the publisher/repository — never via peers — and attaches it to the item.
+ */
+async function downloadOaPdf(itemId: number, url: string, title: string): Promise<string | null> {
+  const res = await fetch(url, { headers: { 'User-Agent': 'Vashira/10.3 (+https://vashira.org)', Accept: 'application/pdf,*/*' }, redirect: 'follow' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > 150 * 1024 * 1024) throw new Error('PDF too large');
+  // Many "PDF" links land on an HTML page (paywall, captcha); only keep real PDFs.
+  if (buf.subarray(0, 5).toString('latin1') !== '%PDF-') throw new Error('Not a PDF');
+  const dir = path.join(getStoragePath(), String(itemId));
+  await fs.promises.mkdir(dir, { recursive: true });
+  const safeName = (title || 'paper').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'paper';
+  const filePath = path.join(dir, safeName + '.pdf');
+  await fs.promises.writeFile(filePath, buf);
+  const fileHash = crypto.createHash('sha256').update(buf.subarray(0, 20000)).digest('hex');
+  updateItem(itemId, { filePath, fileHash });
+  setTimeout(() => indexItemTask({ ...getItemById(itemId), id: itemId }), 100);
+  return filePath;
 }
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

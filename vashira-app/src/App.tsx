@@ -20,6 +20,7 @@ import SharedVault from './components/SharedVault';
 import Tour from './components/Tour';
 import SharingPrompt from './components/SharingPrompt';
 import DuplicatesView from './components/DuplicatesView';
+import DiscoverView from './components/DiscoverView';
 
 type ToastAction = { label: string; onClick: () => void };
 
@@ -293,6 +294,27 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), actions ? 8000 : 3000);
   };
 
+  // Discovery (OpenAlex): a paper was added → refresh; "In library" → open its record.
+  const handleDiscoveryAdded = (_itemId: number, info: { alreadyInLibrary?: boolean; pdf?: boolean }) => {
+    showToast(
+      info.alreadyInLibrary ? 'Already in your library.'
+        : info.pdf === true ? 'Added with its free PDF.'
+        : info.pdf === false ? 'Added. The free PDF couldn’t be downloaded automatically (the site blocked it) — use the DOI link to get it.'
+        : 'Added to your library.',
+      info.pdf === false ? 'alert' : 'success'
+    );
+    loadItems();
+  };
+  const openItemById = async (itemId: number) => {
+    const all = await (window as any).vashiraAPI.getItems();
+    setItems(all);
+    const item = all.find((i: any) => i.id === itemId);
+    if (!item) return;
+    setActiveTab('library');
+    setLibraryFilter({ type: 'all' });
+    handleSelectItem(item);
+  };
+
   const openDuplicates = (focusItemId: number | null = null) => {
     setDupFocusItemId(focusItemId);
     setIsDetailsOpen(false);
@@ -413,6 +435,10 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'discover' && (
+          <DiscoverView onAdded={handleDiscoveryAdded} onOpenItem={openItemById} onError={(m) => showToast(m, 'alert')} />
+        )}
+
         {activeTab === 'shared' && (
           <SharedVault items={items} onShowToast={showToast} onItemImported={loadItems} />
         )}
@@ -502,6 +528,9 @@ export default function App() {
           onTrash={() => selectedItem && handleTrashItem(selectedItem.id)}
           isTrashed={!!selectedItem?.deletedAt}
           onReviewDuplicates={() => selectedItem && openDuplicates(selectedItem.id)}
+          onDiscoveryAdded={handleDiscoveryAdded}
+          onOpenItem={openItemById}
+          onError={(m: string) => showToast(m, 'alert')}
           dupes={dupes}
           collections={collections}
           onAddToCollection={handleAddItemToCollection}

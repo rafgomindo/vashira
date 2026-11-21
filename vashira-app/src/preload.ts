@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld('vashiraAPI', {
   getTagsForItem: (itemId: number) => ipcRenderer.invoke('get-tags-for-item', itemId),
   getItemsByTag: (tagId: number) => ipcRenderer.invoke('get-items-by-tag', tagId),
   searchGlobal: (query: string) => ipcRenderer.invoke('search-global', query),
+  discoveryRelated: (itemId: number) => ipcRenderer.invoke('discovery-related', itemId),
+  discoverySearch: (query: string) => ipcRenderer.invoke('discovery-search', query),
+  discoverySuggestions: () => ipcRenderer.invoke('discovery-suggestions'),
+  discoveryAdd: (candidate: any, opts?: { withPdf?: boolean }) => ipcRenderer.invoke('discovery-add', candidate, opts),
   getAnnotations: (itemId: number) => ipcRenderer.invoke('get-annotations', itemId),
   addAnnotation: (itemId: number, type: string, content: string, position: string, color: string) => ipcRenderer.invoke('add-annotation', itemId, type, content, position, color),
   onItemIngested: (callback: any) => {

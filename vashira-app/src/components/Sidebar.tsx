@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Library, Zap, Settings, Share2, Globe, HelpCircle, FolderClosed, Tag as TagIcon, Plus, Trash2, Copy } from 'lucide-react';
+import { Library, Zap, Settings, Share2, Globe, HelpCircle, FolderClosed, Tag as TagIcon, Plus, Trash2, Copy, Compass } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -19,6 +19,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, communityMod
 
   const navItems = [
     { id: 'library', label: 'Library', icon: Library },
+    { id: 'discover', label: 'Discover', icon: Compass },
     { id: 'shared', label: 'Shared Vault', icon: Share2 },
     { id: 'oracle', label: 'The Oracle', icon: Zap },
     { id: 'scribe', label: 'Scribe', icon: HelpCircle },
